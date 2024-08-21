@@ -11,7 +11,6 @@ from .sys_args import sys_args_to_dict
 from .urlmethod import check_update
 from .utils import timer_event_boostrap, tmpjson_save
 
-
 tooldelta = ToolDelta()
 
 
@@ -34,11 +33,19 @@ def start_tool_delta() -> None:
         timer_event_boostrap()
         tmpjson_save()
         tooldelta.launcher.listen_launched(game_control.system_inject)
-        game_control.set_listen_packets()
-        raise tooldelta.launcher.launch()
+        game_control.set_listen_packets_to_launcher()
+        while 1:
+            err = tooldelta.launcher.launch()
+            if isinstance(err, SystemExit):
+                break
+            else:
+                # not achieved?
+                Print.print_err(f"启动器框架崩溃, 原因: {err}")
+                Print.print_war("将在 10s 后进行重启")
+                time.sleep(10)
     except (KeyboardInterrupt, SystemExit, EOFError) as err:
         Print.print_inf(f"ToolDelta 已关闭，退出原因：{err}")
-        pass
+        time.sleep(3)
     except Exception:
         Print.print_err(f"ToolDelta 运行过程中出现问题：{traceback.format_exc()}")
         input(Print.clean_fmt("§c按回车键退出..."))
@@ -55,8 +62,8 @@ def safe_jump(out_task: bool = True, exit_directly: bool = True) -> None:
         tooldelta.system_exit()
     tooldelta.safelyExit()
     if exit_directly:
-        for _ in range(3, -1, -1):
-            Print.print_war(f"{_}秒后强制退出...", end="\r")
+        for counter in range(3, -1, -1):
+            Print.print_war(f"{counter}秒后强制退出...", end="\r")
             time.sleep(1)
         Print.print_suc("ToolDelta 已退出。")
         os._exit(0)

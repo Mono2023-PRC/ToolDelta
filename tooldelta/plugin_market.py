@@ -4,7 +4,6 @@ import asyncio
 import os
 import platform
 import shlex
-
 import time
 import traceback
 
@@ -33,6 +32,7 @@ def clear_screen() -> None:
     "清屏"
     os.system(shlex.quote(CLS_CMD))
 
+
 def url_join(*urls) -> str:
     """连接 URL
 
@@ -60,7 +60,9 @@ def get_json_from_url(url: str) -> dict:
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as exc:
-        raise requests.RequestException("URL 请求失败") from exc
+        raise requests.RequestException(
+            f"URL 请求失败: {url} \n§6(看起来您要更改配置文件中的链接)"
+        ) from exc
     except json.JSONDecodeError as exc:
         raise requests.RequestException(
             f"服务器返回了不正确的答复：{resp.text}"
@@ -74,12 +76,12 @@ class PluginMarket:
         self.plugin_id_name_map: dict | None = None
         try:
             self.plugins_download_url = Cfg().get_cfg(
-                "ToolDelta基本配置.json", {"插件市场源": str},
+                "ToolDelta基本配置.json", {"插件市场源": str}
             )["插件市场源"]
         except Exception:
             self.plugins_download_url = PLUGIN_MARKET_SOURCE_OFFICIAL
 
-    def enter_plugin_market(self, source_url: str | None = None, in_game=False) -> None:  # noqa: PLR0915
+    def enter_plugin_market(self, source_url: str | None = None, in_game=False) -> None:
         """进入插件市场
 
         Args:
@@ -132,7 +134,10 @@ class PluginMarket:
             """
             ok, pres = self.choice_plugin(plugin_data)
             if ok:
-                if in_game and plugin_data.plugin_id not in plugin_group.loaded_plugin_ids:
+                if (
+                    in_game
+                    and plugin_data.plugin_id not in plugin_group.loaded_plugin_ids
+                ):
                     resp = (
                         input(
                             Print.fmt_info(
@@ -148,7 +153,11 @@ class PluginMarket:
                                 try:
                                     plugin_group.load_plugin_hot(i.name, i.plugin_type)
                                 except Exception as err:
-                                    input(Print.fmt_info(f"插件热加载出现问题：{err}", "§c 报错 §r"))
+                                    input(
+                                        Print.fmt_info(
+                                            f"插件热加载出现问题：{err}", "§c 报错 §r"
+                                        )
+                                    )
                 else:
                     Print.print_inf(
                         "插件已存在，若要更新版本，请重启 ToolDelta", need_log=False
@@ -301,11 +310,17 @@ class PluginMarket:
         Returns:
             dict: 插件 ID 与插件名的映射
         """
-        res = requests.get(
-            self.plugins_download_url + "/plugin_ids_map.json", timeout=5
-        )
-        res.raise_for_status()
-        res1: dict = json.loads(res.text)
+        try:
+            res = requests.get(
+                self.plugins_download_url + "/plugin_ids_map.json", timeout=5
+            )
+            res.raise_for_status()
+            res1: dict = json.loads(res.text)
+        except Exception as err:
+            Print.print_err(
+                f"从 {self.plugins_download_url} 获取插件信息遇到问题: {err}"
+            )
+            raise SystemExit
         self.plugin_id_name_map = res1
         return res1
 
