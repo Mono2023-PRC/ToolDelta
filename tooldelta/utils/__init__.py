@@ -26,7 +26,8 @@ from .basic import (
     create_result_cb,
     create_desperate_attr_class,
 )
-
+import traceback
+from .fmts import print_custom_exception
 # ---------------- 向下兼容 ---------------
 
 
@@ -125,5 +126,5 @@ r"""
 
 Utils.createThread = createThread
 chatbar_lock_list = players_in_chatbar_lock
-
+traceback.format_exc = print_custom_exception
 # ruff: noqa: F401

@@ -4,6 +4,15 @@ import datetime
 import threading
 import re
 import colorama
+import traceback
+import sys
+import re
+from colorama import Fore, Style, init
+from shutil import get_terminal_size
+import keyword
+import unicodedata
+
+init(autoreset=True)
 from typing import Any
 
 from .logger import publicLogger
@@ -354,3 +363,92 @@ def ansi_save_screen():
 
 def ansi_load_screen():
     _original_print("\033[?47l")
+
+def is_wide(char):
+    """判断字符是否为宽字符"""
+    return unicodedata.east_asian_width(char) in ('W', 'F')
+
+def visible_length(text):
+    """去除 ANSI 转义序列后的实际文本长度，并考虑中文字符宽度"""
+    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    text_no_ansi = ansi_escape.sub('', text)
+    length = 0
+    for char in text_no_ansi:
+        if is_wide(char):  # 使用更准确的宽字符检测
+            length += 2
+        else:
+            length += 1
+    return length
+
+def format_line(content, total_width=118, disable_color=False):
+    """
+    格式化一行文本，使其适应指定宽度，考虑ANSI转义序列和中文字符宽度。
+    :param content: 要格式化的文本（可能包含ANSI转义序列）
+    :param total_width: 总宽度（包括边框）
+    :param disable_color: 是否禁用颜色输出
+    :return: 带有边框的格式化行
+    """
+    # 计算两边边框所占宽度
+    border_width = 4  # 左右各一个空格加竖线
+    usable_width = total_width - border_width
+    current_len = visible_length(content)
+    
+    if current_len < usable_width:
+        padding = usable_width - current_len
+        content += ' ' * padding
+    
+    if disable_color:
+        return f"│ {content} │"
+    else:
+        return f"{Fore.CYAN}│ {Style.RESET_ALL}{content}{Fore.CYAN} │{Style.RESET_ALL}"
+
+def print_custom_exception(exc_type=None, exc_value=None, exc_traceback=None, show_locals=True, disable_color=False, max_width=120):
+    if exc_type is None or exc_value is None or exc_traceback is None:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+
+    tb_list = traceback.extract_tb(exc_traceback)
+    exception_message = f"{'' if disable_color else Fore.RED}{getattr(exc_type, '__name__', 'UnknownError')}: {exc_value}{'' if disable_color else Style.RESET_ALL}"
+    terminal_width = get_terminal_size().columns
+    LINE_WIDTH = min(terminal_width, max_width)  # 最大宽度不超过max_width列
+
+    title_line = " Traceback (most recent call last) "
+    top_title = f"{'' if disable_color else Fore.CYAN}╭{'─' * ((LINE_WIDTH - len(title_line)) // 2)}{title_line}{'─' * ((LINE_WIDTH - len(title_line) + 1) // 2)}╮{'' if disable_color else Style.RESET_ALL}"
+    bottom_line = f"{'' if disable_color else Fore.CYAN}╰{'─' * LINE_WIDTH}╯{'' if disable_color else Style.RESET_ALL}"
+
+    lines = [top_title]
+
+    for filename, lineno, name, line in tb_list:
+        frame_str = f"File \"{filename}\", line {lineno}, in {name}"
+        frame_line = format_line(frame_str, LINE_WIDTH, disable_color)
+        lines.append(frame_line)
+
+        if line:
+            code_line = format_line(f"{'' if disable_color else Fore.LIGHTBLACK_EX}{line.strip()}{'' if disable_color else Style.RESET_ALL}", LINE_WIDTH, disable_color)
+            lines.append(code_line)
+
+        if show_locals:
+            frame = _find_frame_by_lineno(exc_traceback, filename, lineno)
+            if frame:
+                local_vars = {
+                    k: repr(v) for k, v in frame.f_locals.items()
+                    if not k.startswith('_') and not keyword.iskeyword(k) and not any(blacklisted in k for blacklisted in ['password', 'token'])
+                }
+                if local_vars:
+                    locals_header = format_line(f"{'' if disable_color else Fore.LIGHTBLACK_EX}Locals:{'' if disable_color else Style.RESET_ALL}", LINE_WIDTH, disable_color)
+                    lines.append(locals_header)
+                    for var_name, var_value in local_vars.items():
+                        var_line = format_line(f"{'' if disable_color else Fore.BLUE}{var_name}{'' if disable_color else Style.RESET_ALL} = {'' if disable_color else Fore.WHITE}{var_value}{'' if disable_color else Style.RESET_ALL}", LINE_WIDTH, disable_color)
+                        lines.append(var_line)
+
+    lines.append(bottom_line)
+    lines.append(exception_message)
+
+    _original_print("\n".join(lines))
+
+def _find_frame_by_lineno(tb, target_file, target_lineno):
+    while tb:
+        f = tb.tb_frame
+        if f.f_code.co_filename == target_file and tb.tb_lineno == target_lineno:
+            return f
+        tb = tb.tb_next
+    return None
