@@ -106,7 +106,7 @@ class FrameFateArk(StandardFrame):
     def _packets_handler(self, pkID: int, pk: dict):
         if pkID == PacketIDS.CommandOutput:
             self._command_output_handler(pk)
-        self.packet_handler(pkID, pk)
+        self.dict_packet_handler(pkID, pk)
 
     def _command_output_handler(self, pk: dict):
         pkUUID = pk["CommandOrigin"]["UUID"]
@@ -174,7 +174,7 @@ class FrameFateArk(StandardFrame):
             pck (str | BaseBytesPacket): 数据包内容
 
         """
-        if type(pck) != dict:
+        if type(pck) is not dict:
             raise Exception("sendPacket: Bytes packet is not supported")
         fateark_core.sendPacket(pckID, pck)
 

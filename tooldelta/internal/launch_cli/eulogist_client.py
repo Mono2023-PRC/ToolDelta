@@ -103,7 +103,7 @@ class FrameEulogistLauncher(StandardFrame):
         """
         if not self.eulogist.connected:
             raise ValueError("还未连接到游戏")
-        self.packet_handler(pkt_type, pkt)
+        self.dict_packet_handler(pkt_type, pkt)
 
     def sendcmd(
         self, cmd: str, waitForResp: bool = False, timeout: float = 30
@@ -170,7 +170,7 @@ class FrameEulogistLauncher(StandardFrame):
             pck (dict | BaseBytesPacket): 数据包内容
 
         """
-        if type(pck) != dict:
+        if type(pck) is not dict:
             raise Exception("sendPacket: Bytes packet is not supported")
         self.eulogist.sendPacket(pckID, pck)
 
