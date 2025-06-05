@@ -14,14 +14,8 @@ import sys
 import traceback
 import json
 
-from . import constants, game_utils, utils
+from . import constants, extend_functions, game_utils, utils
 from .constants import SysStatus, TextType
-from .game_texts import GameTextsHandle, GameTextsLoader
-from .packets import Packet_CommandOutput
-from .utils import cfg, fmts
-from .version import get_tool_delta_version
-from .plugin_load.plugins import PluginGroup
-from .mc_bytes_packet.base_bytes_packet import BaseBytesPacket
 from .internal.config_loader import ConfigLoader
 from .internal.packet_handler import PacketHandler
 from .internal.cmd_executor import ConsoleCmdManager
@@ -36,6 +30,11 @@ from .internal.launch_cli import (
     FB_LIKE_LAUNCHERS,
     LAUNCHERS,
 )
+from .game_texts import GameTextsHandle, GameTextsLoader
+from .packets import Packet_CommandOutput
+from .utils import cfg, fmts
+from .version import get_tool_delta_version
+from .plugin_load.plugins import PluginGroup
 
 
 ###### CONSTANT DEFINE
@@ -83,9 +82,14 @@ class ToolDelta:
             utils.timer_event_boostrap()
             utils.tempjson.jsonfile_auto_save()
             game_utils.hook_packet_handler(self.packet_handler)
+            extend_functions.load_functions(self)
             self.launcher.init()
             self.launcher.listen_launched(
-                [self.game_ctrl.system_inject, self.cmd_manager.start_proc_thread]
+                [
+                    self.game_ctrl.system_inject,
+                    self.cmd_manager.start_proc_thread,
+                    extend_functions.activate_functions,
+                ]
             )
             fmts.print_inf("正在唤醒游戏框架, 等待中...", end="\r")
             err = self.wait_closed()
@@ -203,6 +207,8 @@ class ToolDelta:
     def reload(self):
         """重载所有插件"""
         try:
+            fmts.print_inf("重载: 正在让插件自行退出..")
+            self.plugin_group.pre_reload()
             fmts.print_inf("重载: 正在保存数据缓存文件..")
             utils.safe_close()
             self.cmd_manager.reset_cmds()
@@ -211,12 +217,15 @@ class ToolDelta:
             fmts.print_suc("重载插件: 全部插件重载成功！")
         except cfg.ConfigError as err:
             fmts.print_err(f"重载插件时发现插件配置文件有误: {err}")
+            self.system_exit("reload_error")
         except SystemExit:
             fmts.print_err("重载插件遇到问题")
+            self.system_exit("reload_error")
         except BaseException:
             fmts.print_err("重载插件遇到问题 (报错如下):")
             fmts.print_err(traceback.format_exc())
-        finally:
+            self.system_exit("reload_error")
+        else:
             utils.timer_event_boostrap()
 
 
@@ -249,7 +258,9 @@ class GameCtrl:
         self.sendwscmd = launcher.sendwscmd
         self.sendwocmd = launcher.sendwocmd
         self.sendPacket = launcher.sendPacket
-        self.blobHashHolder = launcher.blobHashHolder
+        # TODO: pretty this code because it is not a good interface
+        if hasattr(launcher, "blobHashHolder"):
+            self.blobHashHolder = launcher.blobHashHolder
 
     def handle_text_packet(self, pkt: dict):
         """处理 文本 数据包
@@ -274,18 +285,6 @@ class GameCtrl:
                         fmts.print_inf("§1" + " ".join(jon).strip('"'))
                     else:
                         fmts.print_inf(msg)
-                    if msg.startswith("death."):
-                        args = pkt["Parameters"]
-                        utils.fill_list_index(args, ["", "", ""])
-                        who_died, killer, weapon_name = args
-                        if weapon_name:
-                            fmts.print_inf(
-                                f"§e{who_died} 被 {killer} 用 {weapon_name} §r杀死了"
-                            )
-                        elif killer:
-                            fmts.print_inf(f"§e{who_died} 被 {killer} 击败了")
-                        else:
-                            fmts.print_inf(f"§e{who_died} 死亡了")
             case (
                 TextType.TextTypeChat
                 | TextType.TextTypeWhisper
@@ -352,25 +351,39 @@ class GameCtrl:
     def bot_name(self) -> str:
         if hasattr(self.launcher, "bot_name"):
             return self.launcher.get_bot_name()
-        raise ValueError("此启动器框架无法产生机器人名")
+        raise ValueError(
+            f"此启动器 ({self.launcher.__class__.__name__}) 框架无法产生机器人名"
+        )
 
     def sendcmd_with_resp(self, cmd: str, timeout: float = 30) -> Packet_CommandOutput:
-        resp: Packet_CommandOutput = self.sendwscmd(cmd, True, timeout)  # type: ignore
+        """
+        发送普通指令并获取返回。
+
+        Args:
+            cmd (str): Minecraft 指令
+            timeout (float, optional): 超时时间, 超时则引发 TimeoutError
+
+        Returns:
+            Packet_CommandOutput: 指令返回类
+        """
+        resp: Packet_CommandOutput = self.sendcmd(cmd, True, timeout)  # type: ignore
         return resp
 
     def sendwscmd_with_resp(
         self, cmd: str, timeout: float = 30
     ) -> Packet_CommandOutput:
-        resp: Packet_CommandOutput = self.sendwscmd(cmd, True, timeout)  # type: ignore
-        return resp
+        """
+        发送 WebSocket 指令并获取返回。
 
-    def blob_hash_holder(self) -> BlobHashHolder:
-        """blobHashHolder 返回 ToolDelta 的 Blob hash cache 缓存数据集的持有人
+        Args:
+            cmd (str): MC WebSocket 指令
+            timeout (float, optional): 超时时间, 超时则引发 TimeoutError
 
         Returns:
-            BlobHashHolder: ToolDelta 的 Blob hash cache 缓存数据集的持有人
+            Packet_CommandOutput: 指令返回类
         """
-        return self.blobHashHolder()
+        resp: Packet_CommandOutput = self.sendwscmd(cmd, True, timeout)  # type: ignore
+        return resp
 
     def say_to(self, target: str, text: str) -> None:
         """向玩家发送消息
@@ -425,3 +438,25 @@ class GameCtrl:
         if self.game_texts_data is None:
             raise ValueError("游戏翻译器字符串数据不可用")
         return self.game_texts_data
+
+    @property
+    def players(self):
+        """
+        获取玩家信息存储 (PlayerInfoMaintainer)
+        """
+        return self.linked_frame.get_players()
+
+    # TODO: pretty this code because it is not a good interface
+    # 这个方法需要得到修改, 因为它不是一个通用接口
+    def blob_hash_holder(self) -> BlobHashHolder:
+        """
+        blobHashHolder 返回 ToolDelta 的 Blob hash cache 缓存数据集的持有人。
+        请确保当前的启动模式为 NeOmega 系启动器。
+
+        Returns:
+            BlobHashHolder: ToolDelta 的 Blob hash cache 缓存数据集的持有人
+        """
+        blobHashHolder: BlobHashHolder | None = getattr(self, "blobHashHolder", None)
+        if blobHashHolder is None:
+            raise ValueError("仅 NeOmega 系框架可使用 BlobHashHolder 功能")
+        return self.blobHashHolder()

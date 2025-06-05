@@ -1,16 +1,16 @@
 import ctypes
 import threading
 import traceback
-from typing import Any, TypeVar, TYPE_CHECKING
+from typing import Any, TypeVar, ParamSpec, Generic
 from collections.abc import Callable
-
-if TYPE_CHECKING:
-    from typing import ParamSpec
-    PT = ParamSpec("PT")
-
 from . import fmts
 
+
+PT = ParamSpec("PT")
+
+
 VT = TypeVar("VT")
+RT = TypeVar("RT")
 threads_list: list["ToolDeltaThread"] = []
 
 
@@ -18,7 +18,7 @@ class ThreadExit(SystemExit):
     """线程退出"""
 
 
-class ToolDeltaThread(threading.Thread):
+class ToolDeltaThread(threading.Thread, Generic[PT, RT]):
     "简化 ToolDelta 子线程创建的 threading.Thread 的子类"
 
     SYSTEM = 0
@@ -27,7 +27,7 @@ class ToolDeltaThread(threading.Thread):
 
     def __init__(
         self,
-        func: Callable,
+        func: Callable[PT, RT],
         args: tuple = (),
         usage="",
         thread_level=PLUGIN,
@@ -45,20 +45,26 @@ class ToolDeltaThread(threading.Thread):
         super().__init__(target=func)
         self.func = func
         self.daemon = True
-        self.all_args = [args, kwargs]
+        self.all_args = (args, kwargs)
         self.usage = usage or f"fn:{func.__name__}"
-        self.start()
         self.stopping = False
         self._thread_level = thread_level
+        self._ret: RT | None = None
+        self._ret_exc = None
+        self._stop_event = threading.Event()
+        self.start()
 
     def run(self) -> None:
         """线程运行方法"""
         threads_list.append(self)
         try:
-            self.func(*self.all_args[0], **self.all_args[1])
-        except (SystemExit, ThreadExit):
+            args, kwargs = self.all_args
+            self._ret = self.func(*args, **kwargs)
+        except (SystemExit, ThreadExit) as e:
+            self._ret_exc = e
             pass
         except ValueError as e:
+            self._ret_exc = e
             if str(e) != "未连接到游戏":
                 fmts.print_err(
                     f"线程 {self.usage or self.func.__name__} 出错:\n"
@@ -66,13 +72,15 @@ class ToolDeltaThread(threading.Thread):
                 )
             else:
                 fmts.print_war(f"线程 {self.usage} 因游戏断开连接被迫中断")
-        except Exception:
+        except Exception as e:
+            self._ret_exc = e
             fmts.print_err(
                 f"线程 {self.usage or self.func.__name__} 出错:\n"
                 + traceback.format_exc()
             )
         finally:
             threads_list.remove(self)
+            self._stop_event.set()
             del self.all_args
 
     def stop(self) -> bool:
@@ -96,7 +104,18 @@ class ToolDeltaThread(threading.Thread):
             ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, None)
             fmts.print_err(f"§c终止线程 {self.name} 失败")
             return False
+        self._stop_event.set()
         return True
+
+    def block_get_result(self) -> RT:
+        self._stop_event.wait()
+        if self._ret_exc:
+            raise self._ret_exc
+        return self._ret  # type: ignore
+
+    def block_get_result_with_timeout(self, timeout: float) -> RT | None:
+        self._stop_event.wait(timeout)
+        return self._ret
 
 
 createThread = ToolDeltaThread
@@ -117,8 +136,10 @@ def thread_func(usage: str, thread_level=ToolDeltaThread.PLUGIN):
     ```
     """
 
-    def _recv_func(func: "Callable[PT, Any]") -> "Callable[PT, ToolDeltaThread]":
-        def thread_fun(*args: Any, **kwargs) -> ToolDeltaThread:
+    def _recv_func(
+        func: "Callable[PT, RT]",
+    ) -> "Callable[PT, ToolDeltaThread[PT, RT]]":
+        def thread_fun(*args: Any, **kwargs):
             return ToolDeltaThread(
                 func,
                 usage=usage,
@@ -126,6 +147,9 @@ def thread_func(usage: str, thread_level=ToolDeltaThread.PLUGIN):
                 args=args,
                 **kwargs,
             )
+
+        thread_fun._orig = func
+        thread_fun._usage = usage
 
         return thread_fun
 
@@ -156,23 +180,23 @@ def thread_gather(
         list[VT]: 方法的返回 (按传入方法的顺序依次返回其结果)
     """
     res: list[Any] = [None] * len(funcs_and_args)
-    oks = [False for _ in range(len(funcs_and_args))]
+    finish_events = [threading.Event() for _ in range(len(funcs_and_args))]
     for i, (func, args) in enumerate(funcs_and_args):
 
-        def _closet(_i, _func):
+        def _closet(_i: int, _func):
             def _cbfunc(*args):
                 try:
                     assert isinstance(args, tuple), "传参必须是 tuple 类型"
                     res[_i] = _func(*args)
                 finally:
-                    oks[_i] = True
+                    finish_events[_i].set()
 
             return _cbfunc
 
         fun, usage = _closet(i, func), f"并行方法 {func.__name__}"
         ToolDeltaThread(fun, args, usage=usage)
-    while not all(oks):
-        pass
+    for evt in finish_events:
+        evt.wait()
     return res
 
 

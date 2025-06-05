@@ -1,4 +1,6 @@
-import struct, numpy
+import struct
+import numpy
+
 from dataclasses import dataclass, field
 from io import BytesIO
 from tooldelta.constants.packets import PacketIDS
@@ -25,9 +27,9 @@ class SubChunkEntry:
 
     def decode(self, reader: BytesIO):
         self.Result = reader.read(1)[0]
-        self.SubChunkPosX = struct.unpack("<i", reader.read(4))[0]
-        self.SubChunkPosY = struct.unpack("<h", reader.read(2))[0]
-        self.SubChunkPosZ = struct.unpack("<i", reader.read(4))[0]
+        self.SubChunkPosX, self.SubChunkPosY, self.SubChunkPosZ = struct.unpack(
+            "<ihi", reader.read(10)
+        )
         self.NBTData = numpy.frombuffer(
             reader.read(struct.unpack("<I", reader.read(4))[0]), dtype=numpy.uint8
         )

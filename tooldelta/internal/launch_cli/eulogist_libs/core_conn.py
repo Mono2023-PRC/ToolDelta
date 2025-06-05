@@ -1,5 +1,5 @@
-import json
 import uuid
+import msgpack
 import threading
 import traceback
 from collections.abc import Callable
@@ -51,7 +51,7 @@ class Eulogist:
     exit_event = threading.Event()
 
     def __init__(self) -> None:
-        self.command_cbs: dict[str, Callable[[dict], None]] = {}
+        self.command_cbs: dict[bytes, Callable[[dict], None]] = {}
         self.bot_name = ""
         self.bot_unique_id = 0
         self.bot_runtime_id = 0
@@ -90,8 +90,13 @@ class Eulogist:
         self.launch_event.set()
 
     def on_msg(self, ws: WebSocket, msg_raw: str):
-        msgdata = json.loads(msg_raw)
-        self.handler(Message(msgdata["type"], msgdata["content"]))
+        msgdata = msgpack.unpackb(msg_raw)
+        # print(msgdata)
+        try:
+            self.handler(Message(msgdata["type"], msgdata["content"]))
+        except Exception:
+            fmts.print_err("赞颂者发送的消息解析失败")
+            fmts.print_err(traceback.format_exc())
 
     def on_clos(self, ws: WebSocket, _, _2):
         self.connected = False
@@ -111,25 +116,27 @@ class Eulogist:
         self.send(Message(MessageType.CMD_SET_CLIENT_BLOCK_PKTS, {"PacketsID": pkIDs}))
 
     def sendPacket(self, pkID: int, pk: dict):
+        pk_bytes: Any = msgpack.packb(pk)
         self.send(
-            Message(MessageType.MSG_SERVER_PKT, {"ID": pkID, "Content": json.dumps(pk)})
+            Message(MessageType.MSG_SERVER_PKT, {"ID": pkID, "Content": pk_bytes})
         )
 
     def sendClientPacket(self, pkID: int, pk: dict):
+        pk_bytes: Any = msgpack.packb(pk)
         self.send(
-            Message(MessageType.MSG_CLIENT_PKT, {"ID": pkID, "Content": json.dumps(pk)})
+            Message(MessageType.MSG_CLIENT_PKT, {"ID": pkID, "Content": pk_bytes})
         )
 
     def sendcmd(self, cmd: str):
-        ud = str(uuid.uuid4())
+        u = uuid.uuid4()
         self.sendPacket(
             77,
             {
                 "CommandLine": cmd,
                 "CommandOrigin": {
                     "Origin": 0,
-                    "UUID": ud,
-                    "RequestID": ud,
+                    "UUID": u.bytes,
+                    "RequestID": u.bytes,
                     "PlayerUniqueID": 0,
                 },
                 "Internal": False,
@@ -137,18 +144,18 @@ class Eulogist:
                 "UnLimited": False,
             },
         )
-        return ud
+        return u
 
     def sendwscmd(self, cmd: str):
-        ud = str(uuid.uuid4())
+        u = uuid.uuid4()
         self.sendPacket(
             77,
             {
                 "CommandLine": cmd,
                 "CommandOrigin": {
                     "Origin": 5,
-                    "UUID": ud,
-                    "RequestID": ud,
+                    "UUID": u.bytes,
+                    "RequestID": u.bytes,
                     "PlayerUniqueID": 0,
                 },
                 "Internal": False,
@@ -156,16 +163,16 @@ class Eulogist:
                 "UnLimited": False,
             },
         )
-        return ud
+        return u
 
     def sendcmd_with_resp(
         self, cmd: str, timeout: float = 5
     ) -> Packet_CommandOutput | None:
         ud = self.sendcmd(cmd)
-        getter, setter = utils.create_result_cb()
-        self.command_cbs[ud] = setter
+        getter, setter = utils.create_result_cb(dict)
+        self.command_cbs[ud.bytes] = setter
         res = getter(timeout)
-        del self.command_cbs[ud]
+        del self.command_cbs[ud.bytes]
         if res is None:
             return None
         else:
@@ -175,10 +182,10 @@ class Eulogist:
         self, cmd: str, timeout: float = 5
     ) -> Packet_CommandOutput | None:
         ud = self.sendwscmd(cmd)
-        getter, setter = utils.create_result_cb()
-        self.command_cbs[ud] = setter
+        getter, setter = utils.create_result_cb(dict)
+        self.command_cbs[ud.bytes] = setter
         res = getter(timeout)
-        del self.command_cbs[ud]
+        del self.command_cbs[ud.bytes]
         if res is None:
             return None
         else:
@@ -225,4 +232,4 @@ class Eulogist:
             fmts.print_err(traceback.format_exc())
 
     def send(self, msg: Message):
-        self.conn.send(json.dumps(msg.dumps(), ensure_ascii=False))
+        self.conn.send(msgpack.packb(msg.dumps())) # type: ignore

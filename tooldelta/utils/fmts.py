@@ -185,8 +185,13 @@ def print_with_info(
                         if set_next_color == -1:
                             raise AssertionError
                         set_next_color = _set_next_col_value
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        string  = "输出信息时出现错误:\n"
+                        string += "    %s\n"
+                        string += "    原信息: %s"
+                        _original_print(
+                            string % (str(exc), text)
+                        )
                 output_txts.append(
                     datetime.datetime.now().strftime("[%H:%M] ")
                     + colormode_replace(info, 7)
@@ -241,7 +246,7 @@ def print_err(text: str, **print_kwargs) -> None:
 
 
 def print_inf(text: str, **print_kwargs) -> None:
-    """输出 INDO 信息
+    """输出 INFO 信息
 
     Args:
         text (str): 输出的文本

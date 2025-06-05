@@ -1,7 +1,7 @@
 import json
 import traceback
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from collections.abc import Callable
 from .. import plugin_market
 from ..constants import SysStatus
@@ -18,7 +18,7 @@ class CommandTrigger:
     triggers: list[str]
     argument_hint: str | None
     usage: str
-    cb: Callable[[list[str]], None]
+    cb: Callable[[list[str]], Any]
 
     def __hash__(self):
         return id(self)
@@ -34,7 +34,7 @@ class ConsoleCmdManager:
         triggers: list[str],
         arg_hint: str | None,
         usage: str,
-        func: Callable[[list[str]], None],
+        func: Callable[[list[str]], Any],
     ):
         """注册 ToolDelta 控制台的菜单项
 
@@ -46,22 +46,42 @@ class ConsoleCmdManager:
         """
         trig = CommandTrigger(triggers, arg_hint, usage, func)
         for trigger in triggers:
-            self.commands[trigger] = trig
+            self.commands[self.test_duplicate_trigger(trigger)] = trig
 
     def get_cmd_triggers(self):
         return list(self.commands.values())
 
     def execute_cmd(self, cmd: str) -> bool:
         cmd = cmd.strip()
-        if cmd == "":
-            return False
-        for prefix, trig in self.commands.items():
+        cmd_finded = False
+        for prefix, trig in self.commands.copy().items():
             if cmd.startswith(prefix):
                 cmds = cmd.removeprefix(prefix).split()
-                trig.cb(cmds)
-                return True
-        fmts.print_war(f"命令 {cmd.split()[0]} 不存在, 输入 ? 查看帮助")
+                res = trig.cb(cmds)
+                cmd_finded = True
+                if res is True:
+                    return True
+        if not cmd_finded and cmd:
+            fmts.print_war(f"命令 {cmd.split()[0]} 不存在, 输入 ? 查看帮助")
         return False
+
+    def test_duplicate_trigger(self, trigger: str):
+        for exists_trigger in self.commands.keys():
+            counter = 0
+            invalid = False
+            origin_trigger = trigger
+            while 1:
+                if not (trigger.startswith(exists_trigger) or exists_trigger.startswith(trigger)):
+                    if invalid:
+                        fmts.print_war(
+                            f"命令 {origin_trigger} 与 {exists_trigger} 冲突, 已更改为 {trigger}"
+                        )
+                        return trigger
+                    break
+                invalid = True
+                counter += 1
+                trigger = f"{counter}-{trigger}"
+        return trigger
 
     @thread_func("控制台执行命令", ToolDeltaThread.SYSTEM)
     def command_readline_proc(self):
@@ -77,6 +97,8 @@ class ConsoleCmdManager:
                     self.frame.launcher.update_status(SysStatus.NORMAL_EXIT)
                     return
                 self.execute_cmd(rsp)
+            except (EOFError, KeyboardInterrupt):
+                fmts.print_war("命令执行被中止")
             except Exception:
                 fmts.print_err(f"控制台指令执行出现问题: {traceback.format_exc()}")
                 fmts.print_err("§6虽然出现了问题, 但是您仍然可以继续使用控制台菜单")
@@ -135,7 +157,7 @@ class ConsoleCmdManager:
                         f"指令执行成功, 详细返回结果:\n{json.dumps(result.as_dict['OutputMessages'], indent=2, ensure_ascii=False)}"
                     )
             except TimeoutError:
-                fmts.print_err("[超时] 指令获取结果返回超时")
+                fmts.print_err(f"[超时] 指令获取结果返回超时: {cmd}")
 
         def _send_to_neomega(cmds: list[str]):
             # 仅当启动模式为 neomega 并行模式才生效

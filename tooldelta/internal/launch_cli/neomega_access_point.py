@@ -167,12 +167,15 @@ class FrameNeOmgAccessPoint(StandardFrame):
         )
         return free_port
 
-    def _msg_show_thread(self) -> None:
+    @utils.thread_func("NeOmega 信息显示线程", thread_level=utils.ToolDeltaThread.SYSTEM)
+    def _msg_show_thread(self, launch_event: threading.Event) -> None:
         """显示来自 NeOmega 的信息"""
         if self.neomg_proc is None or self.neomg_proc.stdout is None:
             raise ValueError("接入点进程未启动")
         while True:
             msg_orig = self.neomg_proc.stdout.readline().strip("\n")
+            if "机器人已获得操作员权限" in msg_orig:
+                launch_event.set()
             if msg_orig in ("", "SIGNAL: exit"):
                 fmts.print_with_info("接入点进程已结束", "§b NOMG ")
                 if self.status == SysStatus.LAUNCHING:
@@ -197,13 +200,16 @@ class FrameNeOmgAccessPoint(StandardFrame):
         )
         self.blob_hash_holder = BlobHashHolder(self.omega)
         openat_port = self.start_neomega_proc()
-        utils.createThread(
-            self._msg_show_thread,
-            usage="显示来自 NeOmega接入点 的信息",
-            thread_level=utils.ToolDeltaThread.SYSTEM,
-        )
+        launch_event = threading.Event()
+        self._msg_show_thread(launch_event)
         if self.status != SysStatus.LAUNCHING:
             return SystemError("接入点无法连接到服务器")
+        fmts.print_inf("等待接入点就绪..")
+        while not launch_event.wait(timeout = 1):
+            if self.exit_event.is_set():
+                return SystemError("NeOmage 启动出现问题.")
+            pass
+        fmts.print_suc("接入点已就绪")
         if (err_str := self.set_omega_conn(f"tcp://127.0.0.1:{openat_port}")) == "":
             self.update_status(SysStatus.RUNNING)
             self.start_wait_omega_disconn_thread()

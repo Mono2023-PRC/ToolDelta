@@ -11,7 +11,6 @@ from .utils import fmts
 from .constants import (
     PLUGIN_TYPE_MAPPING,
     TOOLDELTA_CLASSIC_PLUGIN,
-    TOOLDELTA_INJECTED_PLUGIN,
     TOOLDELTA_PLUGIN_DIR,
 )
 from .plugin_load import PluginRegData
@@ -34,7 +33,6 @@ class PluginManager:
     "插件管理器"
 
     def __init__(self) -> None:
-        self.plugin_reg_data_path = "插件注册表"
         self._plugin_datas_cache: list[PluginRegData] = []
 
     def manage_plugins(self) -> None:
@@ -78,7 +76,6 @@ class PluginManager:
         )
         f_dirname = {
             "classic": TOOLDELTA_CLASSIC_PLUGIN,
-            "injected": TOOLDELTA_INJECTED_PLUGIN,
         }[plugin.plugin_type]
 
         choice = input(fmts.clean_fmt("§f请选择选项: "))
@@ -357,7 +354,7 @@ class PluginManager:
         old_dat.update(plugin_data.dump())
         safe_json_dump(
             old_dat,
-            open(os.path.join(f_dir, "datas.json"), "w", encoding="utf-8"),
+            os.path.join(f_dir, "datas.json"),
         )
 
     @staticmethod
@@ -370,7 +367,7 @@ class PluginManager:
         Returns:
             str: 插件图标
         """
-        ico_colors = {"classic": "§b", "injected": "§d"}
+        ico_colors = {"classic": "§b"}
         return (
             ico_colors.get(plugin.plugin_type, "§7")
             + "■ "

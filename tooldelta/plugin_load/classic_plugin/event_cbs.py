@@ -144,12 +144,12 @@ def execute_frame_exit(evt: FrameExit, onerr: ON_ERROR_CB):
     Args:
         onerr (Callable[[str, Exception, str], None], optional): 插件出错时的处理方法
     """
-    try:
-        for p, func in on_frame_exit_cbs:
+    for p, func in on_frame_exit_cbs:
+        try:
             name = p.name
             func(evt)
-    except Exception as err:
-        onerr(name, err)
+        except Exception as err:
+            onerr(name, err)
 
 
 def execute_reloaded(onerr: ON_ERROR_CB):
@@ -181,7 +181,7 @@ def execute_dict_packet_funcs(pktID: PacketIDS, pkt: dict, onerr: ON_ERROR_CB) -
         try:
             for func in d:
                 res = func(pkt)
-                if res:
+                if res is True:
                     return True
         except Exception as err:
             onerr("插件方法:" + func.__name__, err)
@@ -205,7 +205,7 @@ def execute_bytes_packet_funcs(
         try:
             for func in d:
                 res = func(pkt)
-                if res:
+                if res is True:
                     return True
         except Exception as err:
             onerr("插件方法:" + func.__name__, err)

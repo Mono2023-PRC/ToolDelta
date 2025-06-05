@@ -80,7 +80,7 @@ def getTarget(sth: str, timeout: float = 5) -> list[str]:
     game_ctrl = _get_game_ctrl()
     if not sth.startswith("@"):
         raise ValueError("我的世界目标选择器格式错误 (getTarget 必须使用目标选择器)")
-    result = game_ctrl.sendcmd_with_resp(f"/testfor {sth}", timeout)
+    result = game_ctrl.sendwscmd_with_resp(f"/testfor {sth}", timeout)
     if result.SuccessCount:
         result = result.OutputMessages[0].Parameters[0]
         return result.split(", ")
@@ -170,7 +170,7 @@ def getItem(target: str, itemName: str, itemSpecialID: int = -1) -> int:
     ):
         raise ValueError("未找到目标玩家")
     target = to_player_selector(target)
-    result: Packet_CommandOutput = game_ctrl.sendcmd_with_resp(
+    result = game_ctrl.sendwscmd_with_resp(
         f"/clear {target} {itemName} {itemSpecialID} 0"
     )
     if result.OutputMessages[0].Message == "commands.generic.syntax":
@@ -201,12 +201,12 @@ def getMultiScore(scoreboardNameToGet: str, targetNameToGet: str) -> int | dict:
         scoreboardNameToGet: 计分板名
         targetNameToGet: 获取分数的对象/目标选择器
     Returns:
-        分数：int
+        ...
     Raises:
         ValueError: 无法获取分数
     """
     game_ctrl = _get_game_ctrl()
-    resultList = game_ctrl.sendcmd_with_resp(
+    resultList = game_ctrl.sendwscmd_with_resp(
         f"/scoreboard players list {targetNameToGet}"
     ).OutputMessages
     result = {}
@@ -260,7 +260,7 @@ def getScore(scb_name: str, target: str, timeout: float = 30) -> int:
         raise ValueError("在此处无法使用 通配符 作为计分板分数获取目标")
     if target in game_ctrl.allplayers:
         target = to_player_selector(target)
-    resp = game_ctrl.sendcmd_with_resp(
+    resp = game_ctrl.sendwscmd_with_resp(
         f"/scoreboard players test {target} {scb_name} 0 0", timeout
     ).OutputMessages[0]
     if resp.Message == "commands.scoreboard.objectiveNotFound":
@@ -286,27 +286,27 @@ def isCmdSuccess(cmd: str, timeout: float = 30):
         命令执行是否成功: bool
     """
     game_ctrl = _get_game_ctrl()
-    res = game_ctrl.sendcmd_with_resp(cmd, timeout).SuccessCount
+    res = game_ctrl.sendwscmd_with_resp(cmd, timeout).SuccessCount
     return bool(res)
 
 
-def waitMsg(player: str, timeout: float = 30) -> str | None:
+def waitMsg(playername: str, timeout: float = 30) -> str | None:
     """
     等待玩家在聊天栏发送消息, 并获取返回内容
 
     Args:
-        player (str): 玩家名
+        playername (str): 玩家名
         timeout (int): 超时等待时间
 
     Returns:
         result (str | None): 返回, 如果超时或玩家中途退出则返回None
     """
     s, g = _create_lock_and_result_setter()
-    player_waitmsg_cb[player] = s
+    player_waitmsg_cb[playername] = s
     try:
         res = g(timeout)
     finally:
-        del player_waitmsg_cb[player]
+        player_waitmsg_cb.pop(playername, None)
     return res
 
 
@@ -333,7 +333,7 @@ def getBlockTile(x: int, y: int, z: int) -> str:
         z: Z 坐标
     """
     game_ctrl = _get_game_ctrl()
-    res = game_ctrl.sendcmd_with_resp(f"/testforblock {x} {y} {z} air")
+    res = game_ctrl.sendwscmd_with_resp(f"/testforblock {x} {y} {z} air")
     if (
         res.SuccessCount
         or res.OutputMessages[0].Message == "commands.testforblock.outOfWorld"
@@ -396,7 +396,7 @@ def __set_effect_while__(
     command = f"{command_prefix}{duration} {level} {particle!s}"
 
     while True:
-        result = game_ctrl.sendcmd_with_resp(command)
+        result = game_ctrl.sendwscmd_with_resp(command)
         if result.OutputMessages[0].Message == "commands.effect.success":
             time.sleep(1)
         else:
@@ -445,7 +445,7 @@ def set_player_effect(
         )
         return True
 
-    result = game_ctrl.sendcmd_with_resp(command, timeout=timeout)
+    result = game_ctrl.sendwscmd_with_resp(command, timeout=timeout)
     match result.OutputMessages[0].Message:
         case "commands.generic.noTargetMatch":
             return ValueError(

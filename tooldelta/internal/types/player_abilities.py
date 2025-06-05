@@ -53,18 +53,39 @@ class Abilities:
     command_permissions: int
 
     def auto_permission_level(self):
-        level = 0
         if (
-            self.mine
+            self.build
+            and self.mine
+            and self.doors_and_switches
+            and self.open_containers
+            and self.attack_players
+            and self.attack_mobs
+            and self.operator_commands
+            and self.teleport
+        ):
+            return 2 # 管理员权限
+        elif (
+            self.build
+            and self.mine
+            and self.doors_and_switches
+            and self.open_containers
+            and self.attack_players
+            and self.attack_mobs
+        ):
+            return 1 # 普通玩家权限
+        elif not (
+            self.build
+            or self.mine
             or self.doors_and_switches
             or self.open_containers
-            or self.attack_players
             or self.attack_mobs
+            or self.attack_players
+            or self.operator_commands
+            or self.teleport
         ):
-            level += 1
-        if self.operator_commands and self.teleport:
-            level += 1
-        return level
+            return 0 # 访客权限
+        else:
+            return 3 # 自定义权限
 
     def marshal(self) -> int:
         return (
@@ -82,6 +103,16 @@ class Abilities:
     def unmarshal(
         cls, abilities: int, player_permissions: int, command_permissions: int
     ):
+        abilities = abilities & (
+            (1 << Ability.AbilityBuild)
+            | (1 << Ability.AbilityMine)
+            | (1 << Ability.AbilityDoorsAndSwitches)
+            | (1 << Ability.AbilityOpenContainers)
+            | (1 << Ability.AbilityAttackPlayers)
+            | (1 << Ability.AbilityAttackMobs)
+            | (1 << Ability.AbilityOperatorCommands)
+            | (1 << Ability.AbilityTeleport)
+        )
         return cls(
             build=bool(abilities & (1 << Ability.AbilityBuild)),
             mine=bool(abilities & (1 << Ability.AbilityMine)),
@@ -96,13 +127,15 @@ class Abilities:
         )
 
 
-def upload_player_abilities(pkt_sender: "GameCtrl", playerUniqueID: int, abilities: Abilities):
+def upload_player_abilities(
+    pkt_sender: "GameCtrl", playerUniqueID: int, abilities: Abilities
+):
     pkt_sender.sendPacket(
         PacketIDS.RequestPermissions,
         {
             "EntityUniqueID": playerUniqueID,
             "PermissionLevel": abilities.auto_permission_level(),
-            "Ability": abilities.marshal(),
+            "RequestedPermissions": abilities.marshal(),
         },
     )
 
@@ -114,8 +147,6 @@ def update_player_ability_from_ability_data(
     command_permissions = ab_data["CommandPermissions"]
     for layer_data in ab_data["Layers"]:
         if layer_data["Type"] == 1:
-            maintainer.player_abilities[player.unique_id] = (
-                Abilities.unmarshal(
-                    layer_data["Values"], player_permissions, command_permissions
-                )
+            maintainer.player_abilities[player.unique_id] = Abilities.unmarshal(
+                layer_data["Values"], player_permissions, command_permissions
             )
