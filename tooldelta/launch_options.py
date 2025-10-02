@@ -6,6 +6,7 @@ import traceback
 
 from random import choice
 from .utils import fmts, sys_args
+from .utils.urlmethod import get_github_commits
 from .constants import TOOLDELTA_LOGO_mode
 from .internal.config_loader import ConfigLoader
 from .plugin_manager import plugin_manager
@@ -47,6 +48,17 @@ def client_title() -> None:
             if launch_section:
                 r = launch_section
             else:
+                try:
+                    commits = get_github_commits()
+                    fmts.clean_print("§6ToolDelta §r版本更新日志:")
+                    for sha,author,date,message in commits:
+                        fmts.clean_print(f"{sha} by {author} at {date}    {message}")
+                    fmts.clean_print("§6插件市场 §r版本更新日志:")
+                    commits = get_github_commits(repositorie="ToolDelta-Basic/PluginMarket")
+                    for sha,author,date,message in commits:
+                        fmts.clean_print(f"{sha} by {author} at {date}    {message}")
+                except Exception:
+                    fmts.print_err("无法获取最新版本信息")
                 text = choice(TOOLDELTA_LOGO_mode)
                 if text[0] == 0:
                     print(fmts.clean_fmt(text[1]))

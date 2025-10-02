@@ -14,6 +14,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import Fore, Style
 from tqdm.asyncio import tqdm
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from ..constants.tooldelta_cli import (
     TDREPO_URL,
@@ -452,3 +454,18 @@ def get_newest_dependency_commit(mirror_src: str) -> str:
         mirror_src
         + f"/https://raw.githubusercontent.com/{TDDEPENDENCY_REPO_RAW}/main/commit"
     ).text
+
+def get_github_commits(mirror_src: str="api.github.com",repositorie: str="ToolDelta-Basic/ToolDelta",sha: str="main",per_page: int=20,page: int=1):
+    """
+    获取 GitHub 提交记录
+
+    Args:
+        mirror_src: 镜像源
+        repositorie: 仓库名
+        sha: 分支名
+        per_page: 每页数量
+        page: 页码
+    """
+    res=requests.get(f"https://{mirror_src}/repos/{repositorie}/commits",params={"sha": sha, "per_page": per_page, "page": page},verify=False,timeout=3)
+    res.raise_for_status()
+    return [(i["sha"][:8],i["commit"]["author"].get("name", ""),i["commit"]["author"]["date"],i["commit"]["message"].splitlines()[0]) for i in res.json()]
