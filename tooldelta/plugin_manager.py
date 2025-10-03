@@ -7,13 +7,15 @@ import shutil
 import json
 from pathlib import Path
 from rich import print as rich_print
+from rich.prompt import Prompt
 from rich.markdown import Markdown
 from .utils import fmts
 from .constants import PLUGIN_TYPE_MAPPING
 from .plugin_load import PluginRegData
 from .plugin_market import market
 from .utils import try_int, safe_json_dump, safe_json_load
-
+from .constants import TOOLDELTA_PLUGIN_PATH
+import time
 
 if platform.system().lower() == "windows":
     CLS_CMD = "cls"
@@ -31,11 +33,14 @@ class PluginManager:
 
     def __init__(self) -> None:
         self._plugin_datas_cache: list[PluginRegData] = []
+        self.auto_update_checked = False
 
     def manage_plugins(self) -> None:
         "插件管理界面"
         clear_screen()
         while 1:
+            if not os.path.exists("自动更新.sig"):
+                self.ask_if_auto_update()
             plugins = self.list_plugins_list()
             fmts.clean_print("§f输入§bu§f更新本地所有插件, §f输入§cq§f退出")
             r = input(fmts.clean_fmt("§f输入插件关键词进行选择\n(空格可分隔关键词):"))
@@ -47,6 +52,8 @@ class PluginManager:
             if r1 == "u":
                 self.update_all_plugins(self.get_all_plugin_datas())
                 input("[Enter 键继续..]")
+            if r1 == "g":
+                self.ask_if_auto_update()
             else:
                 res = self.search_plugin(r, plugins)
                 if res is None:
@@ -54,6 +61,24 @@ class PluginManager:
                 else:
                     self.plugin_operation(res)
             clear_screen()
+    
+    def ask_if_auto_update(self):
+        "是否自动更新插件"
+        answer = Prompt.ask(
+            fmts.clean_fmt("§f是否需要 §e自动更新§f 插件?"),
+            choices=["是", "否","Y","N"],
+            default="是",
+        )
+        if answer.lower() in ["是", "Y","y"]:
+            with open("自动更新.sig", "w", encoding="utf-8") as f:
+                f.write("")
+            self.auto_update_checked = True
+            plugins = self.get_all_plugin_datas()
+            self.update_all_plugins_with_bak(plugins)
+        else:
+            if os.path.exists("自动更新.sig"):
+                os.remove("自动更新.sig")
+                self.auto_update_checked = False
 
     def plugin_operation(self, plugin: PluginRegData) -> None:
         """
@@ -161,6 +186,48 @@ class PluginManager:
         fmts.clean_print(
             f"§6当前插件状态为: {['§c禁用', '§a启用'][plugin.is_enabled]}§6"
         )
+    
+    def update_all_plugins_with_bak(self, plugins: list[PluginRegData]) -> None:
+        """
+        更新全部插件并备份旧目录
+
+        Args:
+            plugins (list[PluginRegData]): 插件注册信息列表
+        """
+        market_datas = market.get_market_tree()["MarketPlugins"]
+        need_updates: list[tuple[PluginRegData, str]] = []
+        for i in plugins:
+            s_data = market_datas.get(i.plugin_id)
+            if s_data is None:
+                continue
+            if i.version_str != s_data["version"] and i.is_enabled:
+                need_updates.append((i, s_data["version"]))
+        if need_updates:
+            clear_screen()
+            fmts.clean_print("§f以下插件可进行更新:")
+            for plugin, v in need_updates:
+                fmts.clean_print(f" - {plugin.name} §6{plugin.version_str}§f -> §a{v}")
+            if self.auto_update_checked:
+                r = "y"
+            else:
+                r = (
+                    input(fmts.clean_fmt("§f输入§a y §f开始更新, §c n §f取消: "))
+                    .strip()
+                    .lower()
+                )
+            if r == "y":
+                time_now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+                os.mkdir(TOOLDELTA_PLUGIN_PATH / f"插件文件备份_{time_now}")
+                fmts.print_suc(f"§a已备份旧插件到 {TOOLDELTA_PLUGIN_PATH / f'插件文件备份_{time_now}'}")
+                for plugin, v in need_updates:
+                    #将旧目录备份,复制一份
+                    shutil.copytree(plugin.dir.as_posix(), plugin.dir.as_posix().replace("ToolDelta类式插件",f"插件文件备份_{time_now}"))
+                    self.update_plugin_from_market(plugin)
+                fmts.clean_print("§a全部插件已更新完成")
+            else:
+                fmts.clean_print("§6已取消插件更新.")
+        else:
+            fmts.clean_print("§a无可更新的插件.")
 
     def update_all_plugins(self, plugins: list[PluginRegData]) -> None:
         """
