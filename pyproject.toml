@@ -1,44 +1,54 @@
-[tool.poetry]
+[project]
 name = "Tooldelta"
-version = "0.0.0"                                              # This field is automatically set to the value in the version file
+version = "0.0.0"
 description = "Plugin Loader for NeteaseRentalServer on Panel"
-authors = ["ToolDelta Studio Staff"]
-license = ""
-
+authors = [{ name = "ToolDelta Studio Staff" }]
+requires-python = ">=3.10,<3.13"
 readme = "README.md"
-homepage = "https://github.com/ToolDelta-Basic/ToolDelta"
-repository = "https://github.com/ToolDelta-Basic/ToolDelta"
+license = ""
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "colorama>=0.4.6,<0.5",
+    "pyspeedtest==1.2.7",
+    "aiohttp>=3.9.3,<4",
+    "flask>=3.0.2,<4",
+    "websocket-client>=1.7.0,<2",
+    "pyyaml==6.0.1",
+    "brotli>=1.1.0,<2",
+    "websockets>=12.0,<13",
+    "tqdm>=4.66.4,<5",
+    "anyio>=4.4.0,<5",
+    "requests>=2.32.3,<3",
+    "numpy>=2.1.0,<3",
+    "protobuf>=6.30.1,<7",
+    "grpcio>=1.71.0,<2",
+    "msgpack>=1.1.0,<2",
+    "nbtlib>=2.0.4,<3",
+    "rich>=14.1.0,<15",
+]
 
-# Please don't change this manually, your changes may invalidate other people's package management, use poetry to make changes!
-[tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-colorama = "^0.4.6"
-pyspeedtest = "1.2.7"
-aiohttp = "^3.9.3"
-flask = "^3.0.2"
-websocket-client = "^1.7.0"
-pyyaml = "6.0.1"
-brotli = "^1.1.0"
-websockets = "^12.0"
-tqdm = "^4.66.4"
-anyio = "^4.4.0"
-requests = "^2.32.3"
-numpy = "^2.1.0"
-protobuf = "^6.30.1"
-grpcio = "^1.71.0"
-msgpack = "^1.1.0"
-nbtlib = "^2.0.4"
-rich = "^14.1.0"
+[project.urls]
+Homepage = "https://github.com/ToolDelta-Basic/ToolDelta"
+Repository = "https://github.com/ToolDelta-Basic/ToolDelta"
 
-[[tool.poetry.source]]
+[tool.uv]
+
+[[tool.uv.index]]
 name = "mirrors"
 url = "http://mirrors.aliyun.com/pypi/simple/"
-priority = "primary"
+default = true
 
+[tool.uv.build-backend]
+module-root = ""
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
 
 
 [tool.ruff]
