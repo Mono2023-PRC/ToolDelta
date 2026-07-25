@@ -54,6 +54,28 @@ def get_json_from_url(url: str):
         ) from exc
 
 
+def github_repo_to_raw_url(repo_url: str, path: str = "", branch: str = "main") -> str:
+    """将 GitHub 仓库 URL 转换为 raw content URL（支持镜像加速）"""
+    if repo_url.startswith("https://github.com/"):
+        repo_path = repo_url[len("https://github.com/"):]
+        mirror = urlmethod.get_global_github_src_url()
+        if mirror and mirror.rstrip("/") != "https://github.com":
+            return f"{mirror.rstrip('/')}/https://raw.githubusercontent.com/{repo_path}/{branch}/{path}"
+        return f"https://raw.githubusercontent.com/{repo_path}/{branch}/{path}"
+    return repo_url
+
+
+def github_api_url(repo_url: str, path: str = "") -> str:
+    """将 GitHub 仓库 URL 转换为 API URL（支持镜像加速）"""
+    if repo_url.startswith("https://github.com/"):
+        repo_path = repo_url[len("https://github.com/"):]
+        mirror = urlmethod.get_global_github_src_url()
+        if mirror and "ghproxy" in mirror:
+            return f"{mirror.rstrip('/')}/https://api.github.com/repos/{repo_path}/contents/{path}"
+        return f"https://api.github.com/repos/{repo_path}/contents/{path}"
+    return repo_url
+
+
 class PluginMarket:
     "插件市场类"
 
@@ -61,6 +83,8 @@ class PluginMarket:
         self._cached_market_tree = {}
         self._cached_plugins_id_map = {}
         self._cached_market_filetree: FILETREE = {}
+        self._cached_marketplace_data = {}
+        self._is_decentralized = False
         try:
             self.plugin_market_content_url = cfg.get_cfg(
                 "ToolDelta基本配置.json", {"插件市场源": str}
@@ -84,12 +108,20 @@ class PluginMarket:
         CONTENT_LENGTH = 15
 
         try:
-            market_datas = self.get_market_tree()
-            plugin_ids_map = self.get_plugin_id_name_map()
-            show_list = [
-                (i, j) if i.startswith("[pkg]") else ("[pkg]" + i, j)
-                for i, j in market_datas["Packages"].items()
-            ] + list(market_datas["MarketPlugins"].items())
+            # 检测市场类型
+            self._detect_market_type()
+            
+            if self._is_decentralized:
+                market_datas = self.get_decentralized_market_data()
+                plugin_ids_map = self.get_decentralized_plugin_id_name_map()
+                show_list = list(market_datas.items())
+            else:
+                market_datas = self.get_market_tree()
+                plugin_ids_map = self.get_plugin_id_name_map()
+                show_list = [
+                    (i, j) if i.startswith("[pkg]") else ("[pkg]" + i, j)
+                    for i, j in market_datas["Packages"].items()
+                ] + list(market_datas["MarketPlugins"].items())
 
             while True:
                 fmts.ansi_cls()
@@ -150,7 +182,7 @@ class PluginMarket:
                                 if self.handle_plugin_selection(plugin_data):
                                     break
                             else:
-                                # 这是整合包
+                                # 这是整合包（仅旧格式支持）
                                 package_data = self.get_package_data_from_market(
                                     result[0]
                                 )
@@ -172,11 +204,59 @@ class PluginMarket:
             fmts.ansi_load_screen()
             fmts.clean_print("§a已从插件市场返回 ToolDelta 控制台。")
 
+    def _detect_market_type(self) -> None:
+        """检测市场类型：去中心化(marketplace.json) 或 传统格式"""
+        try:
+            # 尝试获取 marketplace.json
+            marketplace_url = url_join(self.plugin_market_content_url, "marketplace.json")
+            data = get_json_from_url(marketplace_url)
+            if "$meta" in data:
+                self._is_decentralized = True
+                self._cached_marketplace_data = data
+                fmts.clean_print("§a检测到去中心化插件市场格式")
+                return
+        except Exception:
+            pass
+        # 默认使用传统格式
+        self._is_decentralized = False
+        fmts.clean_print("§a使用传统插件市场格式")
+
+    def get_decentralized_market_data(self) -> dict:
+        """获取去中心化市场数据"""
+        if self._cached_marketplace_data:
+            return {k: v for k, v in self._cached_marketplace_data.items() if k != "$meta"}
+        marketplace_url = url_join(self.plugin_market_content_url, "marketplace.json")
+        data = get_json_from_url(marketplace_url)
+        self._cached_marketplace_data = data
+        return {k: v for k, v in data.items() if k != "$meta"}
+
+    def get_decentralized_plugin_id_name_map(self) -> dict[str, str]:
+        """获取去中心化市场的插件ID到名称的映射"""
+        if self._cached_plugins_id_map:
+            return self._cached_plugins_id_map
+        
+        market_data = self.get_decentralized_market_data()
+        plugin_ids_map = {}
+        for plugin_key, plugin_info in market_data.items():
+            plugin_id = plugin_info.get("plugin-id", plugin_key)
+            plugin_name = plugin_info.get("name", plugin_key.split("/")[-1] if "/" in plugin_key else plugin_key)
+            plugin_ids_map[plugin_id] = plugin_key
+            plugin_ids_map[plugin_key] = plugin_name
+        self._cached_plugins_id_map = plugin_ids_map
+        return plugin_ids_map
+
     @staticmethod
     def search_by_rule(
         market_datas, show_list: list[tuple[str, dict]]
     ) -> list[tuple[str, dict]] | None:
-        fmts.clean_print(f"{market_datas['SourceName']}: {market_datas['Greetings']}")
+        if "$meta" in market_datas:
+            source_name = market_datas["$meta"].get("name", "插件市场")
+            greetings = "去中心化插件市场"
+        else:
+            source_name = market_datas.get("SourceName", "插件市场")
+            greetings = market_datas.get("Greetings", "")
+        
+        fmts.clean_print(f"{source_name}: {greetings}")
         fmts.clean_print("§a------------------------------")
         fmts.clean_print("§6请选择搜索方式: ")
         fmts.clean_print("  1 -     §b按插件名")
@@ -199,7 +279,7 @@ class PluginMarket:
                     pname = (
                         plugin_id
                         if plugin_id.startswith("[pkg]")
-                        else plugin_data["name"]
+                        else plugin_data.get("name", plugin_id)
                     )
                     if plugin_name_kw in pname.lower():
                         output_show_list.append((plugin_id, plugin_data))
@@ -213,7 +293,7 @@ class PluginMarket:
                 if plugin_author_kw == "":
                     return []
                 for plugin_name, plugin_data in show_list:
-                    if plugin_author_kw in plugin_data["author"].lower():
+                    if plugin_author_kw in plugin_data.get("author", "").lower():
                         output_show_list.append((plugin_name, plugin_data))
                 return output_show_list
             case "3":
@@ -225,9 +305,9 @@ class PluginMarket:
                 if plugin_id_kw == "":
                     return []
                 for plugin_id, plugin_data in show_list:
-                    if plugin_id_kw in plugin_id:
+                    plugin_id_value = plugin_data.get("plugin-id", plugin_id)
+                    if plugin_id_kw in plugin_id_value or plugin_id_kw in plugin_id:
                         output_show_list.append((plugin_id, plugin_data))
-                        break
                 return output_show_list
             case "4":
                 return show_list
@@ -251,7 +331,14 @@ class PluginMarket:
             total_pages (int): 总页数
         """
         fmts.ansi_cls()
-        fmts.clean_print(f"{market_datas['SourceName']}: {market_datas['Greetings']}")
+        if "$meta" in market_datas:
+            source_name = market_datas["$meta"].get("name", "插件市场")
+            greetings = "去中心化插件市场"
+        else:
+            source_name = market_datas.get("SourceName", "插件市场")
+            greetings = market_datas.get("Greetings", "")
+        
+        fmts.clean_print(f"{source_name}: {greetings}")
         for i in range(start_index, min(start_index + content_length, len(show_list))):
             show_name, description = show_list[i]
             if show_name.startswith("[pkg]"):
@@ -259,14 +346,16 @@ class PluginMarket:
                 fmts.clean_print(f" {i + 1}. §c[整合包]§e{pkg_name[5:]}")
             else:
                 plugin_id = show_name
-                plugin_name = plugin_ids_map[plugin_id]
+                plugin_name = description.get("name", plugin_ids_map.get(plugin_id, plugin_id))
                 plugin_type = {"classic": "类式"}.get(
                     description.get("plugin-type", "unknown"),
                     description.get("plugin-type", "unknown"),
                 )
+                version = description.get("version", "0.0.0")
+                author = description.get("author", "unknown")
                 fmts.clean_print(
-                    f" {i + 1}. §e{plugin_name} §av{description['version']} "
-                    f"§b@{description['author']} §d{plugin_type}插件"
+                    f" {i + 1}. §e{plugin_name} §av{version} "
+                    f"§b@{author} §d{plugin_type}插件"
                 )
         fmts.clean_print(
             f"§f第§a{start_index // content_length + 1}§f/§a{total_pages}§f页, 输入§b+§f/§b-§f翻页"
@@ -299,7 +388,7 @@ class PluginMarket:
             time.sleep(1)
         return False
 
-    # 从插件市场的 market_tree.json 获取数据
+    # 从插件市场的 market_tree.json 获取数据（传统格式）
     def get_market_tree(self) -> dict:
         if self._cached_market_tree != {}:
             return self._cached_market_tree
@@ -308,8 +397,12 @@ class PluginMarket:
         )
         return market_datas
 
-    # 从插件市场获取单个插件数据
+    # 从插件市场获取单个插件数据（同时支持两种格式）
     def get_plugin_data_from_market(self, plugin_id: str) -> PluginRegData:
+        if self._is_decentralized:
+            return self._get_plugin_data_from_decentralized_market(plugin_id)
+        
+        # 传统格式
         plugin_name = self.get_plugin_id_name_map().get(plugin_id)
         if plugin_name is None:
             raise requests.RequestException(
@@ -319,7 +412,52 @@ class PluginMarket:
         datas = get_json_from_url(data_url)
         return PluginRegData(plugin_name, datas)
 
-    # 从插件市场获取单个整合包数据
+    def _get_plugin_data_from_decentralized_market(self, plugin_key: str) -> PluginRegData:
+        """从去中心化市场获取插件数据"""
+        market_data = self.get_decentralized_market_data()
+        
+        # 尝试直接查找
+        plugin_info = market_data.get(plugin_key)
+        if plugin_info is None:
+            # 尝试通过 plugin-id 查找
+            for key, info in market_data.items():
+                if info.get("plugin-id") == plugin_key:
+                    plugin_key = key
+                    plugin_info = info
+                    break
+        
+        if plugin_info is None:
+            raise requests.RequestException(
+                f"无法通过 ID: {plugin_key} 查找插件"
+            )
+        
+        # 获取插件的 datas.json 内容
+        repo_url = plugin_info.get("repo", "")
+        if not repo_url:
+            raise requests.RequestException(
+                f"插件 {plugin_key} 没有配置仓库地址"
+            )
+        
+        # 从 GitHub 仓库获取 datas.json
+        plugin_name = plugin_info.get("name", plugin_key.split("/")[-1])
+        datas_url = github_repo_to_raw_url(repo_url, f"{plugin_name}/datas.json")
+        
+        try:
+            datas = get_json_from_url(datas_url)
+        except requests.RequestException:
+            # 如果找不到 datas.json，使用 marketplace.json 中的数据
+            datas = {
+                "author": plugin_info.get("author", ""),
+                "version": plugin_info.get("version", "0.0.0"),
+                "description": plugin_info.get("desc", plugin_info.get("description", "")),
+                "plugin-id": plugin_info.get("plugin-id", plugin_key),
+                "plugin-type": plugin_info.get("plugin-type", "classic"),
+                "pre-plugins": plugin_info.get("pre-plugins", {}),
+            }
+        
+        return PluginRegData(plugin_name, datas)
+
+    # 从插件市场获取单个整合包数据（传统格式）
     def get_package_data_from_market(self, name: str) -> PluginsPackage:
         target_data_url = url_join(self.plugin_market_content_url, name, "datas.json")
         resp = requests.get(target_data_url)
@@ -343,10 +481,33 @@ class PluginMarket:
             ", ".join([f"{k}§7v{v}" for k, v in plugin_data.pre_plugins.items()])
             or "无"
         )
-        has_doc = (
-            self.get_plugin_filetree(plugin_data.name).get("readme.txt") is not None
-            or self.get_plugin_filetree(plugin_data.name).get("readme.md") is not None
-        )
+        
+        # 检查是否有文档
+        has_doc = False
+        if self._is_decentralized:
+            # 对于去中心化市场，检查 GitHub 仓库是否有 readme
+            market_data = self.get_decentralized_market_data()
+            plugin_key = None
+            for key, info in market_data.items():
+                if info.get("name") == plugin_data.name:
+                    plugin_key = key
+                    break
+            if plugin_key:
+                repo_url = market_data[plugin_key].get("repo", "")
+                if repo_url:
+                    readme_url = github_repo_to_raw_url(repo_url, f"{plugin_data.name}/readme.md")
+                    try:
+                        resp = requests.head(readme_url, timeout=3)
+                        if resp.status_code == 200:
+                            has_doc = True
+                    except Exception:
+                        pass
+        else:
+            has_doc = (
+                self.get_plugin_filetree(plugin_data.name).get("readme.txt") is not None
+                or self.get_plugin_filetree(plugin_data.name).get("readme.md") is not None
+            )
+        
         while True:
             fmts.ansi_cls()
             fmts.clean_print(f"{plugin_data.name} v{plugin_data.version_str}")
@@ -375,7 +536,7 @@ class PluginMarket:
 
     def skim_package(self, pack: PluginsPackage) -> bool:
         """
-        选中整合包进行介绍与操作
+        选中整合包进行介绍与操作（仅传统格式支持）
 
         Args:
             pack (PluginsPackage): 整合包数据类
@@ -426,6 +587,7 @@ class PluginMarket:
             return False
 
     def download_plugin_package(self, pack: PluginsPackage):
+        """下载整合包（仅传统格式支持）"""
         fmts.clean_print("§6获取插件数据中...", end="\r")
         find_plugins = thread_gather([
             (self.get_plugin_data_from_market, (i,)) for i in pack.plugin_ids
@@ -490,10 +652,14 @@ class PluginMarket:
             self.download_plugin(plugin)
         fmts.clean_print("整合包下载完成")
 
-    # 下载插件
+    # 下载插件（同时支持两种格式）
     def download_plugin(
         self, plugin_data: PluginRegData, with_pres=True, is_enabled=False
     ) -> list[PluginRegData]:
+        if self._is_decentralized:
+            return self._download_plugin_from_decentralized(plugin_data, with_pres, is_enabled)
+        
+        # 传统格式下载
         fmts.clean_print(
             f"§6正在获取 §f{plugin_data.name} §6插件的下载任务清单.." + " " * 15,
             end="\r",
@@ -533,7 +699,169 @@ class PluginMarket:
         fmts.clean_print("§a• 插件安装已完成")
         return list(plugin_list.values())
 
+    def _download_plugin_from_decentralized(
+        self, plugin_data: PluginRegData, with_pres=True, is_enabled=False
+    ) -> list[PluginRegData]:
+        """从去中心化市场下载插件"""
+        fmts.clean_print(
+            f"§6正在获取 §f{plugin_data.name} §6插件的下载任务清单.." + " " * 15,
+            end="\r",
+        )
+        
+        # 获取前置插件
+        if with_pres:
+            plugin_list = self.get_plugin_download_list(plugin_data)
+        else:
+            plugin_list = {plugin_data.name: plugin_data}
+        
+        # 获取每个插件的文件列表
+        plugin_filepaths_dict: dict[str, list[str]] = {}
+        market_data = self.get_decentralized_market_data()
+        
+        for plugin_name, this_plugin_info in plugin_list.items():
+            # 查找插件在市场中的 key
+            plugin_key = None
+            for key, info in market_data.items():
+                if info.get("name") == plugin_name:
+                    plugin_key = key
+                    break
+            
+            if plugin_key and plugin_key in market_data:
+                repo_url = market_data[plugin_key].get("repo", "")
+                if repo_url:
+                    # 获取插件目录的文件列表
+                    filelist_url = github_repo_to_raw_url(repo_url, f"{plugin_name}/filelist.json")
+                    try:
+                        filelist = get_json_from_url(filelist_url)
+                        plugin_filepaths_dict[plugin_name] = filelist
+                    except requests.RequestException:
+                        # 如果没有 filelist.json，尝试获取 GitHub API 目录列表
+                        plugin_filepaths_dict[plugin_name] = self._get_github_repo_filelist(repo_url, plugin_name)
+                else:
+                    plugin_filepaths_dict[plugin_name] = []
+            else:
+                plugin_filepaths_dict[plugin_name] = []
+        
+        fmts.clean_print(f"§a已获取插件下载清单 §f{plugin_data.name}§a" + " " * 15)
+        plugin_remote_to_local_path: list[tuple[str, Path]] = []
+        
+        for plugin_name, this_plugin_info in plugin_list.items():
+            match this_plugin_info.plugin_type:
+                case "classic":
+                    _ = TOOLDELTA_CLASSIC_PLUGIN_PATH
+                case _:
+                    raise ValueError(
+                        f"未知插件类型：{this_plugin_info.plugin_type}, 你可能需要通知 ToolDelta 项目开发组解决"
+                    )
+            
+            # 获取 repo_url
+            repo_url = ""
+            for key, info in market_data.items():
+                if info.get("name") == plugin_name:
+                    repo_url = info.get("repo", "")
+                    break
+            
+            for filepath in plugin_filepaths_dict.get(plugin_name, []):
+                if repo_url:
+                    remote_url = github_repo_to_raw_url(repo_url, f"{plugin_name}/{filepath}")
+                else:
+                    remote_url = url_join(self.plugin_market_content_url, plugin_name, filepath)
+                
+                plugin_remote_to_local_path.append((
+                    remote_url,
+                    this_plugin_info.dir / filepath,
+                ))
+        
+        fmts.clean_print(
+            f"§bTD下载管理器: §7需要下载 §c{len(plugin_remote_to_local_path)} §7个文件"
+        )
+        asyncio.run(urlmethod.download_file_urls(plugin_remote_to_local_path))
+        fmts.clean_print("§a• 插件安装已完成")
+        return list(plugin_list.values())
+
+    def _get_github_repo_filelist(self, repo_url: str, plugin_name: str) -> list[str]:
+        """获取 GitHub 仓库中插件目录的文件列表（递归获取子目录）"""
+        try:
+            if repo_url.startswith("https://github.com/"):
+                filelist = []
+                
+                def fetch_dir(path: str) -> None:
+                    api_url = github_api_url(repo_url, path)
+                    resp = requests.get(api_url, timeout=15)
+                    resp.raise_for_status()
+                    contents = resp.json()
+                    
+                    if isinstance(contents, dict):
+                        contents = [contents]
+                    
+                    for item in contents:
+                        if item["type"] == "file":
+                            rel_path = item["path"][len(plugin_name) + 1:] if len(item["path"]) > len(plugin_name) else item["path"]
+                            filelist.append(rel_path)
+                        elif item["type"] == "dir":
+                            fetch_dir(item["path"])
+                
+                fetch_dir(plugin_name)
+                
+                if filelist:
+                    return filelist
+        except Exception as e:
+            fmts.print_war(f"无法获取插件 {plugin_name} 的文件列表: {e}")
+        
+        # 默认文件列表（回退方案）
+        return [
+            "__init__.py",
+            "main.py",
+            "datas.json",
+            "requirements.txt",
+        ]
+
     def lookup_plugin_doc(self, plugin: PluginRegData):
+        """查看插件文档（同时支持两种格式）"""
+        if self._is_decentralized:
+            # 去中心化市场：从 GitHub 仓库获取文档
+            market_data = self.get_decentralized_market_data()
+            repo_url = ""
+            for key, info in market_data.items():
+                if info.get("name") == plugin.name:
+                    repo_url = info.get("repo", "")
+                    break
+            
+            if repo_url:
+                readme_md_url = github_repo_to_raw_url(repo_url, f"{plugin.name}/readme.md")
+                readme_txt_url = github_repo_to_raw_url(repo_url, f"{plugin.name}/readme.txt")
+                
+                try:
+                    resp = requests.get(readme_md_url, timeout=5)
+                    if resp.status_code == 200:
+                        content = resp.content.decode()
+                        fmts.ansi_cls()
+                        fmts.clean_print(f"§b文档正文 (原始编码:{resp.encoding}):")
+                        rich_print(Markdown(content))
+                        input(fmts.clean_fmt("§a已经读完正文了 [Enter]"))
+                        return
+                except Exception:
+                    pass
+                
+                try:
+                    resp = requests.get(readme_txt_url, timeout=5)
+                    if resp.status_code == 200:
+                        content = resp.content.decode()
+                        fmts.ansi_cls()
+                        fmts.clean_print(f"§b文档正文 (原始编码:{resp.encoding}):")
+                        fmts.clean_print(content)
+                        input(fmts.clean_fmt("§a已经读完正文了 [Enter]"))
+                        return
+                except Exception:
+                    pass
+            
+            fmts.clean_print(
+                "§c该插件没有插件文档 (readme.txt / readme.md) [回车键继续]"
+            )
+            input()
+            return
+        
+        # 传统格式
         filetree = self.get_plugin_filetree(plugin.name)
         if filetree.get("readme.txt") is not None:
             url = url_join(
@@ -568,7 +896,7 @@ class PluginMarket:
             fmts.clean_print(content)
         input(fmts.clean_fmt("§a已经读完正文了 [Enter]"))
 
-    # 获取插件 ID 到插件名的映射
+    # 获取插件 ID 到插件名的映射（传统格式）
     def get_plugin_id_name_map(self) -> dict[str, str]:
         if self._cached_plugins_id_map == {}:
             try:
@@ -599,7 +927,7 @@ class PluginMarket:
                 stack.append(plugin_datas)
         return download_paths
 
-    # 获取插件市场的文件目录结构
+    # 获取插件市场的文件目录结构（传统格式）
     def get_market_filetree(self) -> FILETREE:
         if self._cached_market_filetree == {}:
             self._cached_market_filetree = get_json_from_url(
@@ -607,7 +935,7 @@ class PluginMarket:
             )
         return self._cached_market_filetree
 
-    # 获取单个插件的插件文件夹目录结构
+    # 获取单个插件的插件文件夹目录结构（传统格式）
     def get_plugin_filetree(self, plugin_name: str) -> FILETREE:
         tree = self.get_market_filetree().get(plugin_name)
         if tree is None:
@@ -617,8 +945,23 @@ class PluginMarket:
         else:
             raise ValueError(f"名称 {plugin_name} 是文件而非目录")
 
-    # 根据插件 ID 获取插件的最新版本号
+    # 根据插件 ID 获取插件的最新版本号（传统格式）
     def get_latest_plugin_version(self, plugin_id: str) -> tuple[int, int, int]:
+        if self._is_decentralized:
+            # 去中心化市场：从 marketplace.json 获取版本
+            market_data = self.get_decentralized_market_data()
+            for plugin_key, plugin_info in market_data.items():
+                if plugin_info.get("plugin-id") == plugin_id or plugin_key == plugin_id:
+                    version_str = plugin_info.get("version", "0.0.0")
+                    try:
+                        ver = tuple(int(i) for i in version_str.split("."))
+                        assert len(ver) == 3
+                        return ver[0], ver[1], ver[2]
+                    except Exception:
+                        raise ValueError(f"插件版本号字符串 {version_str!r} 不正确")
+            raise KeyError(f"无法通过 ID: {plugin_id} 获取最新插件版本")
+        
+        # 传统格式
         result = get_json_from_url(
             url_join(self.plugin_market_content_url, "latest_versions.json")
         ).get(plugin_id)
