@@ -631,6 +631,18 @@ wheels = [
 ]
 
 [[package]]
+name = "prompt-toolkit"
+version = "3.0.52"
+source = { registry = "http://mirrors.aliyun.com/pypi/simple/" }
+dependencies = [
+    { name = "wcwidth" },
+]
+sdist = { url = "http://mirrors.aliyun.com/pypi/packages/a1/96/06e01a7b38dce6fe1db213e061a4602dd6032a8a97ef6c1a862537732421/prompt_toolkit-3.0.52.tar.gz", hash = "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855" }
+wheels = [
+    { url = "http://mirrors.aliyun.com/pypi/packages/84/03/0d3ce49e2505ae70cf43bc5bb3033955d2fc9f932163e84dc0779cc47f48/prompt_toolkit-3.0.52-py3-none-any.whl", hash = "sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955" },
+]
+
+[[package]]
 name = "protobuf"
 version = "6.31.1"
 source = { registry = "http://mirrors.aliyun.com/pypi/simple/" }
@@ -741,6 +753,7 @@ dependencies = [
     { name = "msgpack" },
     { name = "nbtlib" },
     { name = "numpy" },
+    { name = "prompt-toolkit" },
     { name = "protobuf" },
     { name = "pyspeedtest" },
     { name = "pyyaml" },
@@ -762,6 +775,7 @@ requires-dist = [
     { name = "msgpack", specifier = ">=1.1.0,<2" },
     { name = "nbtlib", specifier = ">=2.0.4,<3" },
     { name = "numpy", specifier = ">=2.1.0,<3" },
+    { name = "prompt-toolkit", specifier = ">=3.0.52" },
     { name = "protobuf", specifier = ">=6.30.1,<7" },
     { name = "pyspeedtest", specifier = "==1.2.7" },
     { name = "pyyaml", specifier = "==6.0.1" },
@@ -800,6 +814,15 @@ source = { registry = "http://mirrors.aliyun.com/pypi/simple/" }
 sdist = { url = "http://mirrors.aliyun.com/pypi/packages/43/6d/fa469ae21497ddc8bc93e5877702dca7cb8f911e337aca7452b5724f1bb6/urllib3-2.2.2.tar.gz", hash = "sha256:dd505485549a7a552833da5e6063639d0d177c04f23bc3864e41e5dc5f612168" }
 wheels = [
     { url = "http://mirrors.aliyun.com/pypi/packages/ca/1c/89ffc63a9605b583d5df2be791a27bc1a42b7c32bab68d3c8f2f73a98cd4/urllib3-2.2.2-py3-none-any.whl", hash = "sha256:a448b2f64d686155468037e1ace9f2d2199776e17f0a46610480d311f73e3472" },
+]
+
+[[package]]
+name = "wcwidth"
+version = "0.8.2"
+source = { registry = "http://mirrors.aliyun.com/pypi/simple/" }
+sdist = { url = "http://mirrors.aliyun.com/pypi/packages/34/74/c6428f875774288bec1396f5bfcbc2d925700a4dad61727fd5f2b12f249d/wcwidth-0.8.2.tar.gz", hash = "sha256:91fbef97204b96a3d4d421609b80340b760cf33e26da123ff243d76b1fda8dda" }
+wheels = [
+    { url = "http://mirrors.aliyun.com/pypi/packages/96/42/3e5985a0a7e57de470b320c6d6a1a67c844f6737a587f3d44dd13d1819e7/wcwidth-0.8.2-py3-none-any.whl", hash = "sha256:d63947694a0539a1d51e01eda7caf800c291020e6cdd7e28ad7b14dd33ad4f85" },
 ]
 
 [[package]]

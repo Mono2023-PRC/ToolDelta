@@ -7,6 +7,7 @@ import traceback
 from random import choice
 from .utils import fmts, sys_args
 from .constants import TOOLDELTA_LOGO_mode
+from .internal import tui_bridge
 from .internal.config_loader import ConfigLoader
 from .plugin_manager import plugin_manager
 from .plugin_market import market
@@ -54,19 +55,34 @@ def client_title() -> None:
                     print(fmts.print_gradient(text[1], text[2], text[3]))
                 if "title" in sys_args.sys_args_to_dict():
                     fmts.clean_print(launch_args["title"] or "")
-                fmts.clean_print(
-                    "§a请选择启动模式§6(使用启动参数 -l <启动模式> 可以跳过该页面):"
+                launch_choices = [
+                    ("1", "1 - 启动 ToolDelta"),
+                    ("2", "2 - 打开插件管理器"),
+                    ("3", "3 - 打开插件市场"),
+                    ("4", "4 - 初始化所有插件配置"),
+                    ("5", "5 - 修改启动配置"),
+                    ("6", "6 - 开启直接启动模式"),
+                ]
+                launch_choices.extend(
+                    (key, f"{key} - {opt_name}")
+                    for key, (opt_name, _) in more_opts.items()
                 )
-                fmts.clean_print("1 - §b启动 ToolDelta")
-                fmts.clean_print("2 - §d打开插件管理器")
-                fmts.clean_print("3 - §d打开插件市场")
-                fmts.clean_print("4 - §6初始化所有插件配置")
-                fmts.clean_print("5 - §a修改启动配置")
-                fmts.clean_print("6 - §c开启直接启动模式")
-                for i, (opt_name, _) in enumerate(more_opts.values()):
-                    fmts.clean_print(f"{i + 7} - {opt_name}")
-                fmts.clean_print("q - §7退出")
-                r = input("请选择: ").strip()
+                launch_choices.append(("q", "q - 退出"))
+                selected = tui_bridge.select("请选择: ", launch_choices)
+                if selected is None:
+                    fmts.clean_print(
+                        "§a请选择启动模式§6(使用启动参数 -l <启动模式> 可以跳过该页面):"
+                    )
+                    fmts.clean_print("1 - §b启动 ToolDelta")
+                    fmts.clean_print("2 - §d打开插件管理器")
+                    fmts.clean_print("3 - §d打开插件市场")
+                    fmts.clean_print("4 - §6初始化所有插件配置")
+                    fmts.clean_print("5 - §a修改启动配置")
+                    fmts.clean_print("6 - §c开启直接启动模式")
+                    for i, (opt_name, _) in enumerate(more_opts.values()):
+                        fmts.clean_print(f"{i + 7} - {opt_name}")
+                    fmts.clean_print("q - §7退出")
+                r = (selected if selected is not None else input("请选择: ")).strip()
             launch_section = ""
             match r:
                 case "1":

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from rich import print as rich_print
 from rich.markdown import Markdown
+from .internal import tui_bridge
 from .utils import cfg, fmts
 from .constants import (
     TOOLDELTA_CLASSIC_PLUGIN_PATH,
@@ -139,21 +140,44 @@ class PluginMarket:
                 last_operation = ""
 
                 while True:
-                    self.display_plugins_and_packages(
-                        market_datas,
+                    if not tui_bridge.is_active():
+                        self.display_plugins_and_packages(
+                            market_datas,
+                            plugin_ids_map,
+                            valid_show_list,
+                            now_index,
+                            sum_pages,
+                            CONTENT_LENGTH,
+                        )
+
+                    page_choices = self.get_market_page_choices(
                         plugin_ids_map,
                         valid_show_list,
                         now_index,
-                        sum_pages,
                         CONTENT_LENGTH,
                     )
-
+                    page_choices.extend([
+                        ("+", "下一页"),
+                        ("-", "上一页"),
+                        ("q", "退出"),
+                    ])
+                    default_index = 0
+                    for idx, (value, _) in enumerate(page_choices):
+                        if value == last_operation:
+                            default_index = idx
+                            break
+                    selected_operation = tui_bridge.select(
+                        f"§f插件市场 第{now_index // CONTENT_LENGTH + 1}/{sum_pages}页: ",
+                        page_choices,
+                        default_index,
+                    )
                     last_operation = (
-                        input(
+                        selected_operation
+                        if selected_operation is not None
+                        else input(
                             fmts.clean_fmt("§f回车键继续上次操作, §bq§f 退出，请输入: ")
                         )
-                        or last_operation
-                    )
+                    ) or last_operation
                     last_operation = last_operation.lower().strip()
                     if last_operation in ["+", "-"]:
                         now_index = max(
@@ -256,15 +280,28 @@ class PluginMarket:
             source_name = market_datas.get("SourceName", "插件市场")
             greetings = market_datas.get("Greetings", "")
         
-        fmts.clean_print(f"{source_name}: {greetings}")
-        fmts.clean_print("§a------------------------------")
-        fmts.clean_print("§6请选择搜索方式: ")
-        fmts.clean_print("  1 -     §b按插件名")
-        fmts.clean_print("  2 -     §d按插件作者名")
-        fmts.clean_print("  3 -     §e按插件 ID")
-        fmts.clean_print("  4 -     §a随便逛逛")
-        fmts.clean_print("  其它    §c退出")
-        resp = input(fmts.clean_fmt("请输入选项: ")).strip().strip("[]")
+        if not tui_bridge.is_active():
+            fmts.clean_print(f"{source_name}: {greetings}")
+            fmts.clean_print("§a------------------------------")
+            fmts.clean_print("§6请选择搜索方式: ")
+            fmts.clean_print("  1 -     §b按插件名")
+            fmts.clean_print("  2 -     §d按插件作者名")
+            fmts.clean_print("  3 -     §e按插件 ID")
+            fmts.clean_print("  4 -     §a随便逛逛")
+            fmts.clean_print("  其它    §c退出")
+        selected = tui_bridge.select(
+            f"{source_name}: 请选择搜索方式: ",
+            [
+                ("1", "1 - 按插件名"),
+                ("2", "2 - 按插件作者名"),
+                ("3", "3 - 按插件 ID"),
+                ("4", "4 - 随便逛逛"),
+                ("q", "退出"),
+            ],
+        )
+        resp = (
+            selected if selected is not None else input(fmts.clean_fmt("请输入选项: "))
+        ).strip().strip("[]")
         output_show_list: list[tuple[str, dict]] = []
         match resp:
             case "1":
@@ -313,6 +350,29 @@ class PluginMarket:
                 return show_list
             case _:
                 return None
+
+    @staticmethod
+    def get_market_page_choices(
+        plugin_ids_map: dict[str, str],
+        show_list: list[tuple[str, dict]],
+        start_index: int,
+        content_length: int,
+    ) -> list[tuple[str, str]]:
+        choices: list[tuple[str, str]] = []
+        for i in range(start_index, min(start_index + content_length, len(show_list))):
+            show_name, description = show_list[i]
+            if show_name.startswith("[pkg]"):
+                label = f"{i + 1}. [整合包] {show_name[5:]}"
+            else:
+                plugin_name = description.get(
+                    "name",
+                    plugin_ids_map.get(show_name, show_name),
+                )
+                version = description.get("version", "0.0.0")
+                author = description.get("author", "unknown")
+                label = f"{i + 1}. {plugin_name} v{version} @{author}"
+            choices.append((str(i + 1), label))
+        return choices
 
     def display_plugins_and_packages(
         self,

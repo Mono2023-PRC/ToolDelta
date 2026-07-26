@@ -30,6 +30,7 @@ dependencies = [
     "msgpack>=1.1.0,<2",
     "nbtlib>=2.0.4,<3",
     "rich>=14.1.0,<15",
+    "prompt-toolkit>=3.0.52",
 ]
 
 [project.urls]

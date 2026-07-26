@@ -6,6 +6,7 @@ import json
 import textwrap
 from .. import plugin_market
 from ..constants import SysStatus
+from . import tui_bridge
 from ..utils import fmts, mc_translator, thread_func, ToolDeltaThread
 from .launch_cli import FrameNeOmegaLauncher, FrameNeOmgAccessPoint
 
@@ -78,6 +79,8 @@ class ConsoleCmdManager:
 
     def execute_cmd(self, cmd: str) -> bool:
         cmd = cmd.strip()
+        if cmd.startswith("."):
+            cmd = cmd[1:].lstrip()
         cmd_finded = False
         sorted_prefixes = sorted(self.commands.keys(), key=len, reverse=True)
 
@@ -125,7 +128,16 @@ class ConsoleCmdManager:
         while True:
             try:
                 try:
-                    rsp = input().encode(errors="ignore").decode("utf-8")
+                    selected = tui_bridge.select(
+                        "控制台: ",
+                        self.get_tui_command_choices(),
+                        show_when_empty=False,
+                    )
+                    rsp = (
+                        selected
+                        if selected is not None
+                        else input()
+                    ).encode(errors="ignore").decode("utf-8")
                     if rsp in ("^C", "^D"):
                         raise KeyboardInterrupt
                 except (KeyboardInterrupt, EOFError):
@@ -303,11 +315,11 @@ class ConsoleCmdManager:
             for cmd_trigger in set(menu):
                 if cmd_trigger.argument_hint:
                     fmts.print_inf(
-                        f" §e{' 或 '.join(cmd_trigger.triggers)} §b{cmd_trigger.argument_hint} §f->  {cmd_trigger.usage}"
+                        f" §e{' 或 '.join('.' + i for i in cmd_trigger.triggers)} §b{cmd_trigger.argument_hint} §f->  {cmd_trigger.usage}"
                     )
                 else:
                     fmts.print_inf(
-                        f" §e{' 或 '.join(cmd_trigger.triggers)}  §f->  {cmd_trigger.usage}"
+                        f" §e{' 或 '.join('.' + i for i in cmd_trigger.triggers)}  §f->  {cmd_trigger.usage}"
                     )
 
         def _list(_):
@@ -387,3 +399,16 @@ class ConsoleCmdManager:
     def start_proc_thread(self):
         self.prepare_internal_cmds()
         self.command_readline_proc()
+
+    def get_tui_command_choices(self) -> list[tuple[str, str]]:
+        choices: list[tuple[str, str]] = []
+        seen: set[CommandTrigger] = set()
+        for cmd_trigger in self.get_cmd_triggers():
+            if cmd_trigger in seen:
+                continue
+            seen.add(cmd_trigger)
+            trigger = cmd_trigger.triggers[0]
+            argument_hint = f" {cmd_trigger.argument_hint}" if cmd_trigger.argument_hint else ""
+            command = f".{trigger}{argument_hint}"
+            choices.append((f".{trigger} ", f"{command} {cmd_trigger.usage}"))
+        return choices

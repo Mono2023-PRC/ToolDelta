@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from rich import print as rich_print
 from rich.markdown import Markdown
+from .internal import tui_bridge
 from .utils import fmts
 from .constants import PLUGIN_TYPE_MAPPING
 from .plugin_load import PluginRegData
@@ -36,9 +37,17 @@ class PluginManager:
         "插件管理界面"
         clear_screen()
         while True:
-            plugins = self.list_plugins_list()
-            fmts.clean_print("§f输入§bu§f更新本地所有插件, §f输入§cq§f退出")
-            r = input(fmts.clean_fmt("§f输入插件关键词进行选择\n(空格可分隔关键词):"))
+            if tui_bridge.is_active():
+                plugins = self.get_all_plugin_datas()
+            else:
+                plugins = self.list_plugins_list()
+                fmts.clean_print("§f输入§bu§f更新本地所有插件, §f输入§cq§f退出")
+            selected = self._select_plugin_manager_entry(plugins)
+            r = (
+                selected
+                if selected is not None
+                else input(fmts.clean_fmt("§f输入插件关键词进行选择\n(空格可分隔关键词):"))
+            )
             r1 = r.strip().lower()
             if r1 == "":
                 continue
@@ -48,7 +57,10 @@ class PluginManager:
                 self.update_all_plugins(self.get_all_plugin_datas())
                 input("[Enter 键继续..]")
             else:
-                res = self.search_plugin(r, plugins)
+                res = self._plugin_by_select_value(r, plugins) or self.search_plugin(
+                    r,
+                    plugins,
+                )
                 if res is None:
                     input("[Enter 键继续..]")
                 else:
@@ -68,12 +80,27 @@ class PluginManager:
         fmts.clean_print(f" - 版本：{plugin.version_str}")
         fmts.clean_print(f" - 作者：{plugin.author}")
         fmts.clean_print(f" 描述：{description_fixed}")
-        fmts.clean_print(
-            f"§f1.删除插件  2.检查更新  3.{'禁用插件' if plugin.is_enabled else '启用插件'}  4.查看手册  §c回车退出"
-        )
+        if not tui_bridge.is_active():
+            fmts.clean_print(
+                f"§f1.删除插件  2.检查更新  3.{'禁用插件' if plugin.is_enabled else '启用插件'}  4.查看手册  §c回车退出"
+            )
         f_dir = PLUGIN_TYPE_MAPPING[plugin.plugin_type]
 
-        choice = input(fmts.clean_fmt("§f请选择选项: "))
+        selected = tui_bridge.select(
+            "§f请选择选项: ",
+            [
+                ("1", "1 - 删除插件"),
+                ("2", "2 - 检查更新"),
+                ("3", f"3 - {'禁用插件' if plugin.is_enabled else '启用插件'}"),
+                ("4", "4 - 查看手册"),
+                ("", "回车退出"),
+            ],
+        )
+        choice = (
+            selected
+            if selected is not None
+            else input(fmts.clean_fmt("§f请选择选项: "))
+        )
         if choice == "1":
             self._delete_plugin(plugin, f_dir)
         elif choice == "2":
@@ -86,6 +113,42 @@ class PluginManager:
             return
         input(fmts.clean_fmt("§b按 [Enter键] 继续.."))
         self.push_plugin_reg_data(plugin)
+
+    @staticmethod
+    def _select_plugin_manager_entry(plugins: list[PluginRegData]) -> str | None:
+        choices = [
+            ("u", "更新本地所有插件"),
+            ("q", "退出插件管理器"),
+        ]
+        choices.extend(
+            (
+                f"plugin:{idx}",
+                fmts.MC_COLOR_CODE_REG.sub(
+                    "",
+                    PluginManager.make_plugin_icon(plugin),
+                ),
+            )
+            for idx, plugin in enumerate(plugins)
+        )
+        return tui_bridge.select(
+            "§f请选择插件或操作: ",
+            choices,
+        )
+
+    @staticmethod
+    def _plugin_by_select_value(
+        value: str,
+        plugins: list[PluginRegData],
+    ) -> PluginRegData | None:
+        if not value.startswith("plugin:"):
+            return None
+        try:
+            index = int(value.removeprefix("plugin:"))
+        except ValueError:
+            return None
+        if 0 <= index < len(plugins):
+            return plugins[index]
+        return None
 
     def _delete_plugin(self, plugin: PluginRegData, parent_dir: Path) -> None:
         """
@@ -231,7 +294,18 @@ class PluginManager:
             fmts.clean_print("§a☑ §f关键词查找到的插件:")
             for i, plugin in enumerate(res):
                 fmts.clean_print(str(i + 1) + ". " + self.make_plugin_icon(plugin))
-            r = try_int(input(fmts.clean_fmt("§f请选择序号: ")))
+            selected = tui_bridge.select(
+                "§f请选择插件: ",
+                [
+                    (str(i + 1), f"{i + 1}. {self.make_plugin_icon(plugin)}")
+                    for i, plugin in enumerate(res)
+                ],
+            )
+            r = try_int(
+                selected
+                if selected is not None
+                else input(fmts.clean_fmt("§f请选择序号: "))
+            )
             if r is None or r not in range(1, len(res) + 1):
                 fmts.clean_print("§c序号无效, 回车键继续")
                 return None
