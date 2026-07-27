@@ -66,21 +66,30 @@ class ToolDeltaThread(threading.Thread, Generic[PT, RT]):
             self._ret_exc = e
             if self._print_exc:
                 if str(e) != "未连接到游戏":
+                    try:
+                        exc_info = traceback.format_exc()
+                    except (SystemExit, ThreadExit):
+                        return
                     fmts.print_err(
                         f"线程 {self.usage or self.func.__name__} 出错:\n"
-                        + traceback.format_exc()
+                        + exc_info
                     )
                 else:
                     fmts.print_war(f"线程 {self.usage} 因游戏断开连接被迫中断")
         except Exception as e:
             self._ret_exc = e
             if self._print_exc:
+                try:
+                    exc_info = traceback.format_exc()
+                except (SystemExit, ThreadExit):
+                    return
                 fmts.print_err(
                     f"线程 {self.usage or self.func.__name__} 出错:\n"
-                    + traceback.format_exc()
+                    + exc_info
                 )
         finally:
-            threads_list.remove(self)
+            if self in threads_list:
+                threads_list.remove(self)
             self._stop_event.set()
             del self.all_args
 

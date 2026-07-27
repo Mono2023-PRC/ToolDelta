@@ -138,9 +138,19 @@ class FrameFateArk(StandardFrame):
             fmts.print_with_info(msg.removesuffix("\n"), "§c FARK ")
         # fmts.print_inf("FateArk 进程已退出")
 
-    @utils.thread_func("FateArk 等待退出线程")
+    @utils.thread_func(
+        "FateArk 等待退出线程", thread_level=utils.ToolDeltaThread.SYSTEM
+    )
     def _start_wait_and_handle_dead_thread(self):
-        dead_reason = fateark_core.wait_dead()
+        try:
+            dead_reason = fateark_core.wait_dead()
+        except RpcError as err:
+            if self.status == SysStatus.NORMAL_EXIT:
+                fmts.print_inf("FateArk 等待退出通道已断开连接")
+                return
+            fmts.print_err(f"FateArk 等待退出通道异常断开: {err.details()}")
+            self.update_status(SysStatus.CRASHED_EXIT)
+            return
         fmts.print_err(f"FateArk 已崩溃: {dead_reason}")
         self.update_status(SysStatus.CRASHED_EXIT)
 
