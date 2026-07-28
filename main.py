@@ -1,6 +1,6 @@
 import os
 import tooldelta
-from tui import run_with_tui
+from tooldelta.tui import run_with_tui
 
 run_with_tui(
     tooldelta.client_title,
