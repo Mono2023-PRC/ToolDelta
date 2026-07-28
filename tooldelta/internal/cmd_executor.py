@@ -45,6 +45,26 @@ class CommandTrigger:
         return id(self)
 
 
+def _menu_sort_key(text: str) -> tuple[tuple[int, int], ...]:
+    key: list[tuple[int, int]] = []
+    for char in text:
+        if "0" <= char <= "9":
+            key.append((0, ord(char)))
+        elif char.isascii() and char.isalpha():
+            key.append((1, ord(char.casefold())))
+        elif char.isascii():
+            key.append((2, ord(char)))
+        else:
+            key.append((3, ord(char)))
+    return tuple(key)
+
+
+def _command_trigger_sort_key(cmd_trigger: CommandTrigger) -> tuple[tuple[int, int], ...]:
+    if not cmd_trigger.triggers:
+        return ()
+    return _menu_sort_key(min(cmd_trigger.triggers, key=_menu_sort_key))
+
+
 class ConsoleCmdManager:
     def __init__(self, frame: "ToolDelta") -> None:
         self.frame = frame
@@ -74,8 +94,8 @@ class ConsoleCmdManager:
             if valid_trigger != trigger:
                 trig.triggers[i] = valid_trigger
 
-    def get_cmd_triggers(self):
-        return list(self.commands.values())
+    def get_cmd_triggers(self) -> list[CommandTrigger]:
+        return sorted(set(self.commands.values()), key=_command_trigger_sort_key)
 
     def execute_cmd(self, cmd: str) -> bool:
         cmd = cmd.strip()
@@ -312,7 +332,7 @@ class ConsoleCmdManager:
         def _basic_help(_):
             menu = self.get_cmd_triggers()
             fmts.print_inf("§a以下是可选的菜单指令项: ")
-            for cmd_trigger in set(menu):
+            for cmd_trigger in menu:
                 if cmd_trigger.argument_hint:
                     fmts.print_inf(
                         f" §e{' 或 '.join('.' + i for i in cmd_trigger.triggers)} §b{cmd_trigger.argument_hint} §f->  {cmd_trigger.usage}"
@@ -402,11 +422,7 @@ class ConsoleCmdManager:
 
     def get_tui_command_choices(self) -> list[tuple[str, str]]:
         choices: list[tuple[str, str]] = []
-        seen: set[CommandTrigger] = set()
         for cmd_trigger in self.get_cmd_triggers():
-            if cmd_trigger in seen:
-                continue
-            seen.add(cmd_trigger)
             trigger = cmd_trigger.triggers[0]
             argument_hint = f" {cmd_trigger.argument_hint}" if cmd_trigger.argument_hint else ""
             command = f".{trigger}{argument_hint}"
