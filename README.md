@@ -1,11 +1,12 @@
 <h1 align="center">ToolDelta - Bot Plugin Loader</h1>
 
 <p align="center">
-  <a href="https://github.com/ToolDelta/ToolDelta/releases"><img src="https://img.shields.io/github/v/release/ToolDelta/ToolDelta?display_name=tag&sort=semver" alt="Releases"></a>
   <img src="https://img.shields.io/github/stars/ToolDelta/ToolDelta.svg?style=falt" alt="Stars">
 </p>
 
 **ToolDelta** 是**为《我的世界：中国版》手机端租赁服**制作的、基于机器人的插件加载器。
+
+**ToolDelta-TUI** 在原有控制台能力上增加了终端图形界面，提供启动选项选择、控制台命令菜单、插件管理器、插件市场等交互式操作入口，便于在终端或面板环境中管理 ToolDelta。
 
 ToolDelta 可以运行在**多种游戏交互启动器核心**上， 包括但不限于：
    - ~~FastBuilder~~
@@ -48,21 +49,14 @@ ToolDelta 的插件可以极大幅提高您的租赁服的玩法上限和优化�
 
 
 ## 运行和配置
-- 直接下载 ToolDelta 可执行文件并运行
-   - [发行版 ToolDelta 下载点这里](https://github.com/ToolDelta/ToolDelta/releases)
-- 在 `pip` 安装 ToolDelta 并运行
-   ```sh
-   pip install tooldelta
-   echo import tooldelta;tooldelta.client_title() > main.py
-   ```
-- 运行:
-   ```sh
-   python3 main.py
-   ```
-   或
-   ```
-   python main.py
-   ```
+克隆 dev 分支源码并同步依赖：
+```sh
+git clone -b dev https://github.com/Mono2023-PRC/ToolDelta
+cd ToolDelta
+uv sync
+```
+
+同步完成后即可在本项目环境中运行 ToolDelta-TUI。
 
 ## 打包 Docker 镜像
 在项目目录下运行命令：
@@ -73,6 +67,6 @@ docker build -t tooldelta .
 ## 使用已打包的 Docker 镜像
 运行命令：
 ```sh
-sudo docker pull crpi-6pmrt6su7uwffyo4.cn-shanghai.personal.cr.aliyuncs.com/tooldelta/tooldelta:latest
+sudo docker pull crpi-e9hja05da2ka9shc.cn-guangzhou.personal.cr.aliyuncs.com/tooldelta_1/tooldelta-tui:latest
 ```
-如果您需要将 ToolDelta 运行在 MCSM 中，在 **应用实例设置>容器化** 中选择镜像名 **tooldelta:latest** 即可。
+如果您需要将 ToolDelta-TUI 运行在 MCSM 中，在 **应用实例设置>容器化** 中选择镜像名 **crpi-e9hja05da2ka9shc.cn-guangzhou.personal.cr.aliyuncs.com/tooldelta_1/tooldelta-tui:latest** 即可。
