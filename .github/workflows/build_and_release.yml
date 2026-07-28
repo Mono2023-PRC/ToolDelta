@@ -1,10 +1,11 @@
 name: Build binaries and Upload to Release
 on:
-  workflow_run:
-    workflows: ["Sync Version"]
-    types:
-      - completed
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      disabled:
+        description: "This workflow is disabled and will not build binaries."
+        required: false
+        default: "true"
 
 defaults:
   run:
@@ -12,6 +13,7 @@ defaults:
 
 jobs:
   build:
+    if: false
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -54,6 +56,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}
   build_changelog:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -80,6 +83,7 @@ jobs:
           path: changelog.md
 
   release:
+    if: false
     needs: [build, build_changelog]
     runs-on: ubuntu-latest
     steps:
