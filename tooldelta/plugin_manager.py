@@ -14,7 +14,6 @@ from .plugin_load import PluginRegData
 from .plugin_market import market
 from .utils import try_int, safe_json_dump, safe_json_load
 
-
 if platform.system().lower() == "windows":
     CLS_CMD = "cls"
 else:
@@ -30,6 +29,7 @@ class PluginManager:
     "插件管理器"
 
     def __init__(self) -> None:
+        """初始化插件管理器缓存。"""
         self._plugin_datas_cache: list[PluginRegData] = []
 
     def manage_plugins(self) -> None:
@@ -119,7 +119,7 @@ class PluginManager:
         latest_version = market.get_latest_plugin_version(plugin.plugin_id)
         if latest_version is None:
             fmts.clean_print("§6无法获取其的最新版本, 回车键继续")
-        elif latest_version == plugin.version_str:
+        elif latest_version == plugin.version:
             fmts.clean_print("§a此插件已经为最新版本, 回车键继续")
         else:
             fmts.clean_print(
@@ -169,14 +169,14 @@ class PluginManager:
         Args:
             plugins (list[PluginRegData]): 插件注册信息列表
         """
-        market_datas = market.get_market_tree()["MarketPlugins"]
         need_updates: list[tuple[PluginRegData, str]] = []
         for i in plugins:
-            s_data = market_datas.get(i.plugin_id)
+            s_data = market.get_market_plugin_info(i.plugin_id)
             if s_data is None:
                 continue
-            if i.version_str != s_data["version"] and i.is_enabled:
-                need_updates.append((i, s_data["version"]))
+            new_version = s_data.get("version", "0.0.0")
+            if i.version_str != new_version and i.is_enabled:
+                need_updates.append((i, new_version))
         if need_updates:
             clear_screen()
             fmts.clean_print("§f以下插件可进行更新:")
